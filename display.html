@@ -39,8 +39,15 @@ body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
 .item .q{font-weight:500;color:#F1FD0E;margin-right:2px;font-size:46px;letter-spacing:1px;}
 .sep{color:#F1FD0E;font-size:23px;padding:0 4px;}
 
-/* ⚡ Take Live crawls just the one bet through the normal engine below -- same
-   font, looping -- so there's no separate static/solo layer. */
+/* ⚡ Take Live: the soloed bet crawls in its own layer, same box as the ticker
+   text, that POPS UP over the playlist crawl and slides away when cleared. The
+   playlist is hidden (.dim) while it's up, so clearing reveals it still running
+   -- or, if the playlist is off air, the whole bar slides away. */
+#solo{position:absolute;left:15.6%;width:81.8%;top:7.8%;height:69.9%;overflow:hidden;
+  transform:translateY(140%);transition:transform .5s cubic-bezier(.16,1,.3,1);}
+#solo.on{transform:translateY(0);}
+#solotrack{position:absolute;top:0;left:0;height:100%;white-space:nowrap;will-change:transform;}
+#viewport.dim{visibility:hidden;}
 
 </style>
 </head>
@@ -50,6 +57,7 @@ body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
     <div id="bar">
       <img id="art" src="bar.png?v=2" alt=""/>
       <div id="viewport"><div id="track"></div></div>
+      <div id="solo"><div id="solotrack"></div></div>
     </div>
   </div>
 </div>
@@ -83,6 +91,8 @@ const viewport = document.getElementById('viewport');
 const track = document.getElementById('track');
 const stage = document.getElementById('stage');
 const barpos = document.getElementById('barpos');
+const soloEl = document.getElementById('solo');
+const soloTrack = document.getElementById('solotrack');
 
 if(BAR) document.getElementById('art').src = BAR;
 
@@ -109,10 +119,11 @@ fitStage();
 let items = [];      // rendered lines, [{id, text, q}]
 let picked = [];     // the operator's selection, from /state
 let live = {};       // id -> current line, from /markets
-let soloId = null;   // one id pinned static over the crawl, or null
+let soloId = null;   // ⚡ one id crawling in the solo layer over the playlist, or null
+let soloItems = [];  // the solo layer's items ([the one bet] or [])
 let wasVisible = false;
 let speed = 90;
-let offset = 0, last = null, rotPtr = 0, lastTs = 0;
+let lastTs = 0;
 
 // RTDB hands arrays back as index-keyed objects often enough to bite.
 const norm = x => !x ? [] : (Array.isArray(x) ? x : Object.values(x)).filter(Boolean);
@@ -124,24 +135,39 @@ const norm = x => !x ? [] : (Array.isArray(x) ? x : Object.values(x)).filter(Boo
 // closed tab means a bar quietly crawling stale prices with no tell.
 // Published text is kept as the fallback for anything not in the current menu.
 function recompute(){
-  let next;
-  if(soloId){
-    // ⚡ Take Live: crawl JUST this one bet, same font, looping -- not crammed
-    // static. It may not be in the playlist (soloed straight from the menu), so
-    // take its text from the live feed.
-    const p = picked.find(x => x.id === soloId);
-    const text = live[soloId] || (p && p.text) || '';
-    next = text ? [{ id: soloId, q: (p && p.q) || '', text }] : [];
-  } else {
-    next = picked.map(p => ({ id: p.id, q: p.q || '', text: live[p.id] || p.text || '' }))
-                 .filter(i => i.text);
-  }
-
+  const next = picked.map(p => ({ id: p.id, q: p.q || '', text: live[p.id] || p.text || '' }))
+                     .filter(i => i.text);
   // Only rebuild when the content actually changed -- reassigning on every
   // heartbeat would restart the crawl mid-line and read as a stutter.
   if(JSON.stringify(next.map(i => i.text)) === JSON.stringify(items.map(i => i.text))) return;
   items = next;
-  rotPtr = 0;
+  playlist.resetRotation();
+}
+
+// ⚡ Take Live: the soloed bet crawls in its own layer that pops up over the
+// playlist and slides away when cleared. The playlist keeps running underneath
+// (hidden), so taking the solo down returns to it -- or, if the playlist is off
+// air, the whole bar slides away. The bet may be soloed straight from the menu
+// (not in the playlist), so its text comes from the live feed.
+let soloHideTimer = null;
+function applySolo(){
+  const on = !!soloId;
+  const p = picked.find(x => x.id === soloId);
+  const text = on ? (live[soloId] || (p && p.text) || '') : '';
+  const next = text ? [{ id: soloId, q: (p && p.q) || '', text }] : [];
+  if(JSON.stringify(next.map(i => i.text)) !== JSON.stringify(soloItems.map(i => i.text))){
+    soloItems = next; soloScroll.resetRotation();
+  }
+  clearTimeout(soloHideTimer);
+  if(on){
+    viewport.classList.add('dim');   // hide the playlist crawl behind the solo
+    soloEl.classList.add('on');      // pop up
+  } else {
+    soloEl.classList.remove('on');   // slide away
+    // keep the playlist hidden until the solo has fully slid off, so the two
+    // never show through each other; then reveal the playlist crawl as-is.
+    soloHideTimer = setTimeout(() => { if(!soloId) viewport.classList.remove('dim'); }, 520);
+  }
 }
 
 function applyState(s){
@@ -154,18 +180,20 @@ function applyState(s){
 
   const visible = !(s.visible === false && !PREVIEW);
   bar.classList.toggle('hidden', !visible);
-  // Coming on air: restart the crawl from the top so the operator's first
-  // playlist item is what viewers see first, not wherever it happened to be.
-  if(visible && !wasVisible){ offset = 0; rotPtr = 0; while(track.firstChild) track.removeChild(track.firstChild); }
+  // Coming on air: restart the playlist crawl from the top so the operator's
+  // first item is what viewers see first.
+  if(visible && !wasVisible) playlist.reset();
   wasVisible = visible;
 
   recompute();
+  applySolo();
 }
 
 function applyMenu(v){
   const mks = v && v.markets ? norm(v.markets) : [];
   live = Object.fromEntries(mks.map(m => [m.id, m.text]));
   recompute();
+  applySolo();
 }
 
 // No connection indicator here on purpose: anything drawn in this page is
@@ -174,40 +202,48 @@ function applyMenu(v){
 _db.ref('odds/' + fbKey(TOPIC) + '/state').on('value', snap => applyState(snap.val()));
 _db.ref('odds/' + fbKey(TOPIC) + '/markets').on('value', snap => applyMenu(snap.val()));
 
-// ── seamless scroll engine (never reloads on air) ──
-function spawn(){
-  if(!items.length) return false;
-  const m = items[rotPtr++ % items.length];
-  const el = document.createElement('span');
-  el.className = 'item';
-  el.innerHTML = `<span class="sep">◆</span><span class="q"></span><span class="txt"></span>`;
-  // textContent, not innerHTML -- market titles are third-party strings.
-  el.querySelector('.q').textContent = m.q || '';
-  el.querySelector('.txt').textContent = m.text || '';
-  track.appendChild(el);
-  return true;
-}
-function needSpawn(){
-  if(!items.length) return false;
-  const lastEl = track.lastChild;
-  if(!lastEl) return true;
-  return (lastEl.offsetLeft + lastEl.offsetWidth + offset) < viewport.clientWidth + 300;
-}
-function frame(t){
-  if(last === null) last = t;
-  const dt = Math.min((t - last)/1000, 0.05); last = t;
-  if(track.firstChild) offset -= speed * dt; else offset = 0;  // don't drift while empty
-  while(track.firstChild){
-    const c = track.firstChild;
-    if(c.offsetLeft + c.offsetWidth + offset < -5){ offset += c.offsetWidth; track.removeChild(c); }
-    else break;
+// ── seamless scroll engine: one instance per layer (playlist + solo) ──
+function makeScroller(track, viewport, getItems){
+  let offset = 0, rotPtr = 0, last = null;
+  function spawn(){
+    const list = getItems(); if(!list.length) return false;
+    const m = list[rotPtr++ % list.length];
+    const el = document.createElement('span'); el.className = 'item';
+    el.innerHTML = `<span class="sep">◆</span><span class="q"></span><span class="txt"></span>`;
+    // textContent, not innerHTML -- market titles are third-party strings.
+    el.querySelector('.q').textContent = m.q || '';
+    el.querySelector('.txt').textContent = m.text || '';
+    track.appendChild(el); return true;
   }
-  let safety = 0;
-  while(needSpawn() && safety++ < 50){ if(!spawn()) break; }
-  track.style.transform = `translateX(${offset}px)`;
-  requestAnimationFrame(frame);
+  function needSpawn(){
+    const list = getItems(); if(!list.length) return false;
+    const lastEl = track.lastChild; if(!lastEl) return true;
+    return (lastEl.offsetLeft + lastEl.offsetWidth + offset) < viewport.clientWidth + 300;
+  }
+  function frame(t){
+    if(last === null) last = t;
+    const dt = Math.min((t - last)/1000, 0.05); last = t;
+    if(track.firstChild) offset -= speed * dt; else offset = 0;  // don't drift while empty
+    while(track.firstChild){
+      const c = track.firstChild;
+      if(c.offsetLeft + c.offsetWidth + offset < -5){ offset += c.offsetWidth; track.removeChild(c); }
+      else break;
+    }
+    let safety = 0;
+    while(needSpawn() && safety++ < 50){ if(!spawn()) break; }
+    track.style.transform = `translateX(${offset}px)`;
+    requestAnimationFrame(frame);
+  }
+  return {
+    resetRotation(){ rotPtr = 0; },   // next spawn starts at item 0, existing scroll out
+    reset(){ offset = 0; rotPtr = 0; last = null; while(track.firstChild) track.removeChild(track.firstChild); },
+    start(){ requestAnimationFrame(frame); },
+  };
 }
-requestAnimationFrame(frame);
+const playlist = makeScroller(track, viewport, () => items);
+const soloScroll = makeScroller(soloTrack, soloEl, () => soloItems);
+playlist.start();
+soloScroll.start();
 </script>
 </body>
 </html>
