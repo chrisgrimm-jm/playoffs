@@ -504,7 +504,8 @@ function publish(){
   if(!user) return;                   // /state writes require Jomboy auth (rules 401 otherwise)
   const items = selected().map(m => ({id:m.id, text:m.text, q:''}));
   const speed = parseFloat($('speed').value) || 90;
-  const visible = onAir && (items.length > 0 || !!soloId);
+  // A solo is on stream on its own; the playlist crawl needs GO ON AIR + items.
+  const visible = !!soloId || (onAir && items.length > 0);
   _db.ref('odds/' + fbKey(subTopic) + '/state').set({
     ts: Date.now(), visible, speed, items, solo: soloId || null
   });
@@ -516,8 +517,10 @@ function takeLive(id){
   if(!user){ signIn(); return; }       // needs Jomboy auth to write /state
   if(soloId === id){ clearSolo(); return; }
   soloId = id;
-  if(!onAir){ onAir = true; $('air').textContent = 'ON AIR — TAKE OFF'; $('air').className = 'on'; }
-  drawPreview(); render(); publish();     // render() refreshes both menu and playlist ⚡ state
+  // A solo goes on stream immediately on its own -- publish() makes it visible
+  // whether or not the playlist is on air, and it does NOT flip the playlist on.
+  // Clearing it returns to whatever the playlist was doing (on air or off).
+  render(); publish();                    // render() refreshes both menu and playlist ⚡ state
 }
 function clearSolo(){ soloId = null; render(); publish(); }
 
