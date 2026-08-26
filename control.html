@@ -49,7 +49,10 @@ label.inline{display:flex;align-items:center;gap:8px;font-size:15px;color:#c8c3d
 #obshead{display:flex;align-items:center;gap:10px;font-size:13px;color:#6b6680;
   letter-spacing:2px;font-weight:700;margin-bottom:6px;}
 #obshead .live{color:#00B13C;}
-#obs{position:relative;width:100%;max-width:864px;aspect-ratio:864/119;
+/* Full 1920x1080 canvas preview -- the Display self-scales to fill it, so this
+   shows exactly what OBS renders: the bar at its real size and position on the
+   canvas, not stretched. */
+#obs{position:relative;width:100%;max-width:760px;aspect-ratio:16/9;
   border-radius:8px;overflow:hidden;
   /* transparency checkerboard, so it reads as an OBS source rather than a card */
   background-image:linear-gradient(45deg,#26242f 25%,transparent 25%),
@@ -58,8 +61,7 @@ label.inline{display:flex;align-items:center;gap:8px;font-size:15px;color:#c8c3d
     linear-gradient(-45deg,transparent 75%,#26242f 75%);
   background-size:16px 16px;
   background-position:0 0,0 8px,8px -8px,-8px 0;}
-#obs iframe{position:absolute;top:0;left:0;width:864px;height:119px;border:0;
-  transform-origin:top left;}
+#obs iframe{position:absolute;inset:0;width:100%;height:100%;border:0;}
 
 /* Category chips. 15 categories and 260 markets is too much to scroll, so this
    is the primary way in: choose which categories exist in the list at all. */
@@ -159,7 +161,7 @@ body{padding-right:360px;}
     <div id="auth"><button id="signin">Sign in</button><span id="who"></span></div>
   </div>
   <div id="obswrap">
-    <div id="obshead"><span>OBS PREVIEW</span><span>864 × 119</span><span id="obsair"></span></div>
+    <div id="obshead"><span>OBS PREVIEW</span><span>1920 × 1080</span><span id="obsair"></span></div>
     <div id="obs">
       <iframe id="obsframe" title="OBS preview" scrolling="no"></iframe>
     </div>
@@ -472,10 +474,9 @@ function drawPreview(){
 // The iframe reloads only when the topic changes -- it picks up selections and
 // odds over Firebase on its own, exactly as the OBS source does. Reloading it
 // on every pick would restart the crawl and hide the real behaviour.
-function sizePreview(){
-  const box = $('obs');
-  if(box.clientWidth) $('obsframe').style.transform = `scale(${box.clientWidth / 864})`;
-}
+// The Display self-scales its 1920x1080 stage to fill whatever window it's in,
+// so the iframe just fills the preview box -- nothing to size here.
+function sizePreview(){}
 function mountPreview(topic){
   // cb= busts the browser cache. Without it the preview happily shows a stale
   // Display after a deploy, which makes it lie about what OBS will render --

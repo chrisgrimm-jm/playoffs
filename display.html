@@ -10,63 +10,55 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-html,body{height:100%;overflow:hidden;background:transparent;}
+html,body{width:100%;height:100%;overflow:hidden;background:transparent;}
 body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
 
-/* The page IS the bar. Set the OBS Browser Source to 864x119 and position it in
-   OBS -- that is the exact on-air size of the Singular build (its 1920x264 PNG
-   sits in a 45% box with object-fit contain: 1920*.45 = 864 wide, and
-   864*264/1920 = 119 tall). The 7.27 aspect matches, so no distortion.
+/* Full 1920x1080 transparent canvas. Set the OBS Browser Source to your canvas
+   size (1920x1080) -- the bar lands in position, no manual sizing. #stage scales
+   to whatever the source/window actually is, so the Control preview and the OBS
+   output are identical: same layout, just a different scale. */
+#stage{position:absolute;top:0;left:0;width:1920px;height:1080px;transform-origin:top left;}
 
-   Background is the SAME bar.png the Singular composition uses,
-   not a CSS re-creation. Gradient, flag mark, chartreuse rule and caption are
-   therefore pixel-identical by construction rather than by eyeballing, and
-   regenerating the art updates both builds at once. */
-#bar{
-  position:fixed;inset:0;z-index:8;
-  transform:translateY(0);transition:transform .45s cubic-bezier(.16,1,.3,1);
-}
-#bar.hidden{transform:translateY(115%);}
-/* An <img> layer rather than a CSS background-image: identical result, but it
-   also renders under file:// in preview tooling that strips background URLs,
-   so the graphic can be verified without standing up a web server. */
+/* #barpos carries the bar's position and its size scale (?w=), so the bar itself
+   stays a fixed 864x119 design and its px text never needs to change. 864x119 is
+   the Singular on-air size (1920x264 art in a 45% box). */
+#barpos{position:absolute;width:864px;height:119px;transform-origin:top left;}
+#bar{position:absolute;inset:0;z-index:8;
+  transform:translateY(0);transition:transform .45s cubic-bezier(.16,1,.3,1);}
+#bar.hidden{transform:translateY(130%);}
 #art{position:absolute;inset:0;width:100%;height:100%;display:block;}
 
-/* Text window is the Singular Text Ticker's box, converted to percentages of
-   the bar so it holds at any source size. In that sub-composition the widget is
-   707x83 centred at (108, 427) and the bar renders 864x118.8 spanning y
-   375.8-494.6, sharing one coordinate space:
-     left   135/864          = 15.6%   (left edge sits just right of the flag)
-     width  707/864          = 81.8%
-     top    (385.2-375.8)/118.8 = 7.8%  (omit this and the copy rides high)
-     height  83/118.8        = 69.9%
-   Change these only alongside the Singular values, or the two builds drift. */
+/* Text window = Singular Text Ticker box as % of the 864x119 bar (left 15.6%,
+   width 81.8%, top 7.8%, height 69.9%). Font sizes are px at the 119px design
+   (the old vh values x 1.19); #barpos/#stage scale everything uniformly. */
 #viewport{position:absolute;left:15.6%;width:81.8%;top:7.8%;height:69.9%;overflow:hidden;}
 #track{position:absolute;top:0;left:0;height:100%;white-space:nowrap;will-change:transform;}
 .item{display:inline-flex;align-items:center;height:100%;
   font-family:'Sofia Sans Semi Condensed',sans-serif;font-weight:700;
-  font-size:48vh;letter-spacing:.4px;color:#FAFAFA;vertical-align:top;}
-.item .q{font-weight:500;color:#F1FD0E;margin-right:1.4vh;font-size:39vh;letter-spacing:1px;}
-.sep{color:#F1FD0E;font-size:19vh;padding:0 3.6vh;}
+  font-size:57px;letter-spacing:.4px;color:#FAFAFA;vertical-align:top;}
+.item .q{font-weight:500;color:#F1FD0E;margin-right:2px;font-size:46px;letter-spacing:1px;}
+.sep{color:#F1FD0E;font-size:23px;padding:0 4px;}
 
-/* Solo takeover: one line pinned full-width and held STATIC (not crawling) so
-   it can be read at a glance, overriding the crawl until cleared. Slides up from
-   below to appear and back down to leave (translateY on the box); the text
-   auto-fits with its own scale so the whole line always shows. */
+/* Solo takeover: one line pinned and held STATIC, overriding the crawl. Slides
+   up to appear, down to leave; the text auto-fits to the bar width. */
 #solo{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  overflow:hidden;transform:translateY(115%);
+  overflow:hidden;transform:translateY(130%);
   transition:transform .5s cubic-bezier(.16,1,.3,1);}
 #solo.on{transform:translateY(0);}
 #viewport.solo #track{visibility:hidden;}
 #solo .txt{font-family:'Sofia Sans Semi Condensed',sans-serif;font-weight:700;
-  font-size:48vh;letter-spacing:.4px;color:#FAFAFA;white-space:nowrap;transform-origin:center;}
+  font-size:57px;letter-spacing:.4px;color:#FAFAFA;white-space:nowrap;transform-origin:center;}
 
 </style>
 </head>
 <body>
-<div id="bar">
-  <img id="art" src="bar.png?v=2" alt=""/>
-  <div id="viewport"><div id="track"></div><div id="solo"><span class="txt"></span></div></div>
+<div id="stage">
+  <div id="barpos">
+    <div id="bar">
+      <img id="art" src="bar.png?v=2" alt=""/>
+      <div id="viewport"><div id="track"></div><div id="solo"><span class="txt"></span></div></div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -98,8 +90,30 @@ const viewport = document.getElementById('viewport');
 const track = document.getElementById('track');
 const solo = document.getElementById('solo');
 const soloTxt = solo.querySelector('.txt');
+const stage = document.getElementById('stage');
+const barpos = document.getElementById('barpos');
 
 if(BAR) document.getElementById('art').src = BAR;
+
+// ── canvas layout ──
+// Design canvas is 1920x1080. The bar is 864x119 (Singular on-air size); place
+// and size it with ?x= ?y= ?w= (defaults: bottom-centre). The stage then scales
+// to the actual OBS source / preview window, so both look identical.
+const CANVAS_W = 1920, CANVAS_H = 1080, BAR_W = 864, BAR_H = 119;
+const barW = parseFloat(params.get('w')) || BAR_W;
+const barX = params.has('x') ? parseFloat(params.get('x')) : (CANVAS_W - barW) / 2;
+const barY = params.has('y') ? parseFloat(params.get('y')) : (CANVAS_H - barW * BAR_H / BAR_W - 60);
+barpos.style.left = barX + 'px';
+barpos.style.top = barY + 'px';
+barpos.style.transform = 'scale(' + (barW / BAR_W) + ')';
+
+function fitStage(){
+  const s = Math.min(innerWidth / CANVAS_W, innerHeight / CANVAS_H);
+  const x = (innerWidth - CANVAS_W * s) / 2, y = (innerHeight - CANVAS_H * s) / 2;
+  stage.style.transform = 'translate(' + x + 'px,' + y + 'px) scale(' + s + ')';
+}
+addEventListener('resize', fitStage);
+fitStage();
 
 let items = [];      // rendered lines, [{id, text, q}]
 let picked = [];     // the operator's selection, from /state
