@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Odds Ticker — Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue:ital@0;1&family=Sofia+Sans+Semi+Condensed:wght@400;500;700;800&display=swap" rel="stylesheet"/>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Sofia Sans Semi Condensed',sans-serif;background:#1A1823;color:#fff;
+  padding:22px 26px 60px;}
+h1{font-family:'Bebas Neue',sans-serif;font-style:italic;font-size:40px;letter-spacing:2px;}
+h1 .dot{color:#E40000;}
+.sub{color:#9a95ad;font-size:15px;margin-top:2px;}
+
+.row{display:flex;gap:14px;align-items:center;flex-wrap:wrap;}
+.bar{background:#23212E;border-radius:14px;padding:16px 18px;margin:18px 0;}
+
+input[type=text],input[type=search],select{
+  background:#12111a;border:1px solid #3A3749;color:#fff;border-radius:8px;
+  padding:10px 13px;font:inherit;font-size:16px;}
+input[type=search]{flex:1 1 260px;}
+button{background:#2B283A;border:1px solid #3A3749;color:#fff;border-radius:8px;
+  padding:10px 16px;font:inherit;font-size:15px;font-weight:700;cursor:pointer;}
+button:hover{border-color:#00B7FF;}
+button.primary{background:#E40000;border-color:#E40000;}
+button.on{background:#00B13C;border-color:#00B13C;}
+button:disabled{opacity:.4;cursor:not-allowed;}
+label.inline{display:flex;align-items:center;gap:8px;font-size:15px;color:#c8c3d6;}
+
+#status{margin-left:auto;font-size:14px;color:#9a95ad;display:flex;align-items:center;gap:8px;}
+#dot{width:9px;height:9px;border-radius:50%;background:#555;}
+#dot.ok{background:#00B13C;}#dot.err{background:#E40000;}
+
+#auth{display:flex;align-items:center;gap:8px;}
+#auth #who{font-size:13px;color:#00B13C;cursor:pointer;}
+#auth #who::before{content:'●  ';}
+#auth.in #signin{display:none;}
+#auth:not(.in) #who{display:none;}
+
+/* Preview is the real Display in an iframe at its true 864x119, scaled to fit.
+   Not a mock-up of the crawl -- it is the same page OBS loads, on the same
+   Firebase state, so what you see here is what goes to air. */
+#obswrap{margin-top:14px;}
+#obshead{display:flex;align-items:center;gap:10px;font-size:13px;color:#6b6680;
+  letter-spacing:2px;font-weight:700;margin-bottom:6px;}
+#obshead .live{color:#00B13C;}
+#obs{position:relative;width:100%;max-width:864px;aspect-ratio:864/119;
+  border-radius:8px;overflow:hidden;
+  /* transparency checkerboard, so it reads as an OBS source rather than a card */
+  background-image:linear-gradient(45deg,#26242f 25%,transparent 25%),
+    linear-gradient(-45deg,#26242f 25%,transparent 25%),
+    linear-gradient(45deg,transparent 75%,#26242f 75%),
+    linear-gradient(-45deg,transparent 75%,#26242f 75%);
+  background-size:16px 16px;
+  background-position:0 0,0 8px,8px -8px,-8px 0;}
+#obs iframe{position:absolute;top:0;left:0;width:864px;height:119px;border:0;
+  transform-origin:top left;}
+
+/* Category chips. 15 categories and 260 markets is too much to scroll, so this
+   is the primary way in: choose which categories exist in the list at all. */
+#cats{display:flex;gap:8px;flex-wrap:wrap;}
+.cat{display:inline-flex;align-items:center;gap:7px;cursor:pointer;user-select:none;
+  background:#12111a;border:1px solid #3A3749;color:#6b6680;border-radius:999px;
+  padding:7px 14px;font-size:15px;font-weight:700;transition:all .12s ease;}
+.cat:hover{border-color:#00B7FF;}
+.cat.show{background:#2B283A;border-color:#00B7FF;color:#fff;}
+.cat .n{font-weight:400;opacity:.65;}
+.cat .on{background:#E40000;color:#fff;border-radius:999px;
+  padding:1px 8px;font-size:12px;letter-spacing:.5px;}
+
+.grp{margin-top:22px;}
+.grp h2{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:3px;color:#00B7FF;
+  border-bottom:1px solid #3A3749;padding-bottom:5px;margin-bottom:8px;
+  display:flex;align-items:center;gap:12px;}
+.grp h2 input{width:17px;height:17px;accent-color:#00B7FF;cursor:pointer;flex:0 0 auto;}
+.grp h2 .name{cursor:pointer;user-select:none;}
+.grp h2 .n{color:#6b6680;}
+.grp h2 .on{color:#E40000;font-size:19px;letter-spacing:1px;}
+.grp h2 .chev{margin-left:auto;color:#6b6680;font-size:16px;cursor:pointer;
+  padding:0 6px;transition:transform .15s ease;}
+.grp.collapsed .chev{transform:rotate(-90deg);}
+.grp.collapsed .body{display:none;}
+.mk{display:flex;gap:12px;align-items:flex-start;padding:8px 10px;border-radius:8px;cursor:pointer;}
+.mk:hover{background:#23212E;}
+.mk.sel{background:#2B283A;box-shadow:inset 3px 0 0 #E40000;}
+.mk input{margin-top:4px;width:17px;height:17px;accent-color:#E40000;flex:0 0 auto;}
+.mk .meta{flex:1 1 auto;min-width:0;}
+.mk .t{display:block;font-weight:700;font-size:17px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mk .o{display:block;color:#c8c3d6;font-size:16px;margin-top:2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mk .golive{flex:0 0 auto;align-self:center;background:#2B283A;border:1px solid #3A3749;
+  color:#F1FD0E;font-size:16px;line-height:1;padding:6px 9px;border-radius:6px;cursor:pointer;}
+.mk .golive:hover{background:#E40000;border-color:#E40000;color:#fff;}
+.mk .badge{font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:2px;
+  background:#3A3749;color:#c8c3d6;padding:2px 8px;border-radius:3px;margin-left:8px;}
+.mk .live{background:#E40000;color:#fff;}
+#empty{color:#6b6680;padding:40px 0;text-align:center;font-style:italic;}
+
+/* On-air playlist: the ordered set that actually crawls, top first. Fixed right
+   rail so it stays put while the operator scrolls the big market list. */
+body{padding-right:360px;}
+#rail{position:fixed;top:0;right:0;width:340px;height:100vh;overflow-y:auto;
+  background:#201E2A;border-left:1px solid #3A3749;padding:18px 16px 40px;}
+#rail h2{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:3px;color:#fff;
+  display:flex;align-items:baseline;gap:10px;}
+#rail h2 .n{color:#6b6680;font-size:20px;}
+#rail .hint{color:#6b6680;font-size:13px;margin:2px 0 12px;}
+#solobar{display:none;background:#E40000;border-radius:8px;padding:10px 12px;margin-bottom:12px;}
+#solobar.on{display:block;}
+#solobar .lab{font-family:'Bebas Neue',sans-serif;letter-spacing:2px;font-size:15px;}
+#solobar .txt{font-size:14px;margin:3px 0 8px;opacity:.95;}
+#solobar button{background:#fff;color:#E40000;border:0;width:100%;font-weight:700;}
+.pl{display:flex;align-items:center;gap:8px;background:#12111a;border:1px solid #3A3749;
+  border-radius:8px;padding:8px 10px;margin-bottom:7px;overflow:hidden;}
+.pl.drag{opacity:.4;}
+.pl.over{border-color:#00B7FF;}
+.pl.soloed{border-color:#E40000;box-shadow:inset 3px 0 0 #E40000;}
+.pl .grip{color:#6b6680;font-size:16px;cursor:grab;flex:0 0 auto;}
+.pl .txt{flex:1 1 auto;min-width:0;}
+/* display:block so overflow/ellipsis apply -- inline spans ignore them and run
+   the card wide. */
+.pl .q{display:block;font-weight:700;font-size:14px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pl .o{display:block;color:#c8c3d6;font-size:13px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pl .live{background:#2B283A;border:1px solid #3A3749;color:#F1FD0E;
+  padding:5px 9px;font-size:14px;line-height:1;flex:0 0 auto;cursor:pointer;border-radius:6px;}
+.pl .live:hover{border-color:#E40000;}
+/* the one line currently live reads red on both the menu and the playlist, so
+   the same ⚡ is clearly the click-again-to-clear control. */
+.pl .live.on,.mk .golive.on{background:#E40000;border-color:#E40000;color:#fff;}
+.pl .x{background:none;border:0;color:#6b6680;font-size:20px;line-height:1;padding:0 4px;
+  flex:0 0 auto;cursor:pointer;}
+.pl .x:hover{color:#E40000;}
+#plempty{color:#6b6680;font-size:14px;font-style:italic;padding:16px 0;}
+@media(max-width:900px){body{padding-right:26px;}
+  #rail{position:static;width:auto;height:auto;margin-top:20px;border-left:0;
+    border-top:1px solid #3A3749;}}
+</style>
+</head>
+<body>
+
+<h1>ODDS TICKER<span class="dot">.</span></h1>
+<div class="sub">Fanatics Markets → OBS. Pick what crawls.</div>
+
+<div class="bar">
+  <div class="row">
+    <button id="air" class="primary">GO ON AIR</button>
+    <label class="inline">Speed <input type="text" id="speed" value="90" style="width:64px"></label>
+    <label class="inline">Topic <input type="text" id="topic" value="jomboy-odds" style="width:150px"></label>
+    <div id="status"><span id="dot"></span><span id="stat">connecting…</span></div>
+    <div id="auth"><button id="signin">Sign in</button><span id="who"></span></div>
+  </div>
+  <div id="obswrap">
+    <div id="obshead"><span>OBS PREVIEW</span><span>864 × 119</span><span id="obsair"></span></div>
+    <div id="obs">
+      <iframe id="obsframe" title="OBS preview" scrolling="no"></iframe>
+    </div>
+  </div>
+</div>
+
+<div class="bar">
+  <div class="row" style="margin-bottom:12px">
+    <div id="cats"></div>
+  </div>
+  <div class="row">
+    <button id="catAll">show all</button>
+    <button id="catNone">show none</button>
+    <input type="search" id="q" placeholder="filter — team, league, market…">
+    <select id="grp">
+      <option value="">all types</option>
+      <option value="moneyline">game lines</option>
+      <option value="outright">futures</option>
+      <option value="standard">events</option>
+      <option value="player_prop">player</option>
+    </select>
+    <button id="selAll">select filtered</button>
+    <button id="clear">clear all</button>
+  </div>
+</div>
+
+<div id="list"></div>
+<div id="empty">waiting for the feeder…<br><small>run: python3 odds_ticker.py --firebase jomboy-odds --loop 30</small></div>
+
+<aside id="rail">
+  <h2>ON AIR <span class="n" id="plcount">0</span></h2>
+  <div class="hint">Drag to reorder — top crawls first. ⚡ takes one line live over everything.</div>
+  <div id="solobar">
+    <div class="lab">⚡ LIVE — OVERRIDING</div>
+    <div class="txt" id="solotxt"></div>
+    <button id="soloclear">CLEAR — back to playlist</button>
+  </div>
+  <div id="playlist"></div>
+  <div id="plempty">No lines yet. Tick markets on the left to build the crawl.</div>
+</aside>
+
+<script>
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCKB90Xi33pxNw2zdS6XoUImpGmBfs9M5E",
+  authDomain: "jm-odds-ticker.firebaseapp.com",
+  databaseURL: "https://jm-odds-ticker-default-rtdb.firebaseio.com",
+  projectId: "jm-odds-ticker",
+  storageBucket: "jm-odds-ticker.firebasestorage.app",
+  messagingSenderId: "1062781451132",
+  appId: "1:1062781451132:web:74a6acbe270a719ef2c2f9"
+};
+firebase.initializeApp(FIREBASE_CONFIG);
+const _db = firebase.database();
+const fbKey = t => t.trim().replace(/[.#$\[\]\/\s]+/g,'-');
+
+// Writes to /state are locked to @jomboymedia.com in the database rules, so the
+// operator signs in with their Jomboy Google account. Reads are open, so the
+// menu still loads before sign-in. hd hints Google to the Jomboy Workspace; the
+// real enforcement is the rule + the check below (a client hint isn't security).
+const _auth = firebase.auth();
+const provider = new firebase.auth.GoogleAuthProvider();
+provider.setCustomParameters({ hd: 'jomboymedia.com' });
+let user = null;
+const signIn = () => _auth.signInWithPopup(provider).catch(e => alert('Sign-in failed: ' + e.message));
+
+const $ = id => document.getElementById(id);
+let all = [];                       // menu from the feeder
+let pick = [];                      // ORDERED playlist of selected market ids
+let soloId = null;                  // one id pinned full-screen over the crawl, or null
+let onAir = false;
+let menuRef = null, subTopic = null;
+
+let collapsed = new Set();          // categories folded shut but still listed
+let hidden = new Set();             // categories taken out of the list entirely
+
+// Selections and collapse state persist across reloads -- an operator who
+// refreshes mid-show should not lose their picks or their tidied-up view.
+// The full "All …Props" lists are thousands of markets, so hide them by default
+// (first load only -- a saved hidden set is respected). They stay searchable.
+const HIDE_DEFAULT = ['All Batter Props', 'All Pitcher Props'];
+try { pick = JSON.parse(localStorage.getItem('oddsSel') || '[]'); } catch(e){}
+try { collapsed = new Set(JSON.parse(localStorage.getItem('oddsCollapsed') || '[]')); } catch(e){}
+try { hidden = new Set(JSON.parse(localStorage.getItem('oddsHidden') || 'null') || HIDE_DEFAULT); }
+catch(e){ hidden = new Set(HIDE_DEFAULT); }
+const saveSel = () => localStorage.setItem('oddsSel', JSON.stringify(pick));
+const saveCollapsed = () => localStorage.setItem('oddsCollapsed', JSON.stringify([...collapsed]));
+const saveHidden = () => localStorage.setItem('oddsHidden', JSON.stringify([...hidden]));
+
+// pick is an ordered array (drag-reorderable), so membership/add/remove go
+// through these instead of Set methods. Order == crawl order, top first.
+const isPicked = id => pick.includes(id);
+const addPick = id => { if(!pick.includes(id)) pick.push(id); };
+const delPick = id => { const i = pick.indexOf(id); if(i >= 0) pick.splice(i, 1); };
+
+_db.ref('.info/connected').on('value', s => {
+  $('dot').className = s.val() ? 'ok' : 'err';
+});
+
+function subscribe(){
+  const t = $('topic').value.trim() || 'jomboy-odds';
+  if(t === subTopic) return;
+  if(menuRef) menuRef.off();
+  subTopic = t;
+  mountPreview(t);
+  menuRef = _db.ref('odds/' + fbKey(t) + '/markets');
+  menuRef.on('value', snap => {
+    const v = snap.val();
+    all = v && v.markets ? (Array.isArray(v.markets) ? v.markets : Object.values(v.markets)) : [];
+    $('stat').textContent = v ? `${all.length} markets · fed ${v.updated || '?'}` : 'no feed';
+    $('empty').style.display = all.length ? 'none' : 'block';
+    renderCats(); render();
+    // Odds move. Re-publish on every menu refresh so what's on air tracks the
+    // feed instead of freezing at whatever the prices were when it was picked.
+    if(onAir) publish();
+  });
+}
+$('topic').addEventListener('change', subscribe);
+subscribe();
+
+const topicOf = m => m.topic || 'Other';
+
+// Category display order for both the chips and the list. Anything not listed
+// falls to the end, alphabetically.
+const CAT_ORDER = ['Moneyline', 'Featured Batter Props', 'Featured Pitcher Props',
+  'Futures', 'Run Line', 'Total Runs', 'All Batter Props', 'All Pitcher Props'];
+const catRank = t => { const i = CAT_ORDER.indexOf(t); return i < 0 ? 999 : i; };
+const byCatOrder = (a, b) => catRank(a) - catRank(b) || a.localeCompare(b);
+
+function filtered(){
+  const q = $('q').value.trim().toLowerCase();
+  const g = $('grp').value;
+  return all.filter(m =>
+    // A search reaches every category, hidden ones included; with no search the
+    // hidden categories stay out of the list.
+    (q ? true : !hidden.has(topicOf(m))) &&
+    (!g || m.group === g) &&
+    (!q || (m.title + ' ' + (m.question||'') + ' ' + (m.series||'') + ' ' + m.text).toLowerCase().includes(q)));
+}
+
+function renderCats(){
+  const counts = {}, on = {};
+  for(const m of all){
+    const t = topicOf(m);
+    counts[t] = (counts[t]||0) + 1;
+    if(isPicked(m.id)) on[t] = (on[t]||0) + 1;
+  }
+  $('cats').innerHTML = Object.keys(counts).sort(byCatOrder).map(t => `
+    <span class="cat ${hidden.has(t)?'':'show'}" data-cat="${esc(t)}">
+      ${esc(t)} <span class="n">${counts[t]}</span>
+      ${on[t]?`<span class="on">${on[t]}</span>`:''}
+    </span>`).join('');
+
+  $('cats').querySelectorAll('.cat').forEach(el => {
+    el.addEventListener('click', () => {
+      const t = el.dataset.cat;
+      hidden.has(t) ? hidden.delete(t) : hidden.add(t);
+      saveHidden(); renderCats(); render();
+    });
+  });
+}
+
+function render(){
+  const byTopic = {};
+  for(const m of filtered()) (byTopic[m.topic || 'Other'] ||= []).push(m);
+  // Float in-play (LIVE) markets to the top of each category -- during a live
+  // game that game's props/lines are the ones you're reaching for, not buried
+  // in a long Batter/Pitcher Props list. Stable sort keeps feed order otherwise.
+  for(const t in byTopic) byTopic[t].sort((a, b) => (b.status === 'LIVE') - (a.status === 'LIVE'));
+
+  $('list').innerHTML = Object.keys(byTopic).sort(byCatOrder).map(topic => {
+    const rows = byTopic[topic];
+    const on = rows.filter(m => isPicked(m.id)).length;
+    return `
+    <div class="grp ${collapsed.has(topic)?'collapsed':''}" data-topic="${esc(topic)}">
+      <h2>
+        <input type="checkbox" class="grpsel" ${on===rows.length?'checked':''}
+               ${on&&on<rows.length?'data-part="1"':''}>
+        <span class="name">${esc(topic)}</span>
+        <span class="n">${rows.length}</span>
+        ${on?`<span class="on">${on} on</span>`:''}
+        <span class="chev">▾</span>
+      </h2>
+      <div class="body">
+    ${rows.map(m => `
+      <label class="mk ${isPicked(m.id)?'sel':''}" data-id="${esc(m.id)}">
+        <input type="checkbox" ${isPicked(m.id)?'checked':''}>
+        <span class="meta">
+          <span class="t">${esc(m.question || m.title)}
+            ${m.status==='LIVE'?'<span class="badge live">LIVE</span>':''}
+            ${m.truncated?`<span class="badge">+${m.truncated} more</span>`:''}</span>
+          <span class="o">${esc(m.text)}</span>
+        </span>
+        <button class="golive ${m.id===soloId?'on':''}"
+                title="Take live now — click again to clear">⚡</button>
+      </label>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+
+  // Partially-selected categories show the tri-state box, which HTML can only
+  // set from script.
+  $('list').querySelectorAll('.grpsel[data-part]').forEach(cb => cb.indeterminate = true);
+
+  $('list').querySelectorAll('.mk input').forEach(cb => {
+    cb.addEventListener('change', e => {
+      const id = e.target.closest('.mk').dataset.id;
+      e.target.checked ? addPick(id) : delPick(id);
+      saveSel(); renderCats(); render(); if(onAir) publish();
+    });
+  });
+
+  // Take live straight from the menu -- solo it now without adding to the
+  // playlist. preventDefault stops the surrounding <label> toggling the pick.
+  $('list').querySelectorAll('.golive').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation();
+      takeLive(e.target.closest('.mk').dataset.id);
+    });
+  });
+
+  // Category select-all. Acts on what's currently filtered into the category,
+  // not the whole category -- otherwise a filtered view would silently select
+  // rows the operator can't see.
+  $('list').querySelectorAll('.grpsel').forEach(cb => {
+    cb.addEventListener('change', e => {
+      const topic = e.target.closest('.grp').dataset.topic;
+      const rows = filtered().filter(m => (m.topic || 'Other') === topic);
+      rows.forEach(m => e.target.checked ? addPick(m.id) : delPick(m.id));
+      saveSel(); renderCats(); render(); if(onAir) publish();
+    });
+  });
+
+  // Collapse hides the category's rows. Purely a view state -- picks inside a
+  // collapsed category stay on air, which is why the header still shows "N on".
+  $('list').querySelectorAll('.chev, .grp h2 .name').forEach(el => {
+    el.addEventListener('click', e => {
+      const topic = e.target.closest('.grp').dataset.topic;
+      collapsed.has(topic) ? collapsed.delete(topic) : collapsed.add(topic);
+      saveCollapsed(); render();
+    });
+  });
+  drawPreview();
+  renderPlaylist();
+}
+
+function selected(){
+  // Playlist order: map the ordered id list to live market objects. Drops ids
+  // whose market has left the feed (game ended), keeping order for the rest.
+  return pick.map(id => all.find(m => m.id === id)).filter(Boolean);
+}
+
+let dragId = null;
+
+function renderPlaylist(){
+  const items = selected();                 // ordered, joined to live odds
+  $('plcount').textContent = items.length;
+  $('plempty').style.display = items.length ? 'none' : 'block';
+  $('solobar').className = soloId ? 'on' : '';
+  if(soloId){
+    const s = all.find(m => m.id === soloId);
+    $('solotxt').textContent = s ? s.text : '(waiting for feed)';
+  }
+  $('playlist').innerHTML = items.map(m => `
+    <div class="pl ${m.id===soloId?'soloed':''}" draggable="true" data-id="${esc(m.id)}">
+      <span class="grip">⋮⋮</span>
+      <span class="txt">
+        <span class="q">${esc(m.question || m.title || m.text)}</span>
+        <span class="o">${esc(m.text)}</span>
+      </span>
+      <button class="live ${m.id===soloId?'on':''}"
+              title="Take live — click again to clear">⚡</button>
+      <button class="x" title="Remove from playlist">×</button>
+    </div>`).join('');
+
+  $('playlist').querySelectorAll('.pl').forEach(row => {
+    const id = row.dataset.id;
+    row.querySelector('.live').onclick = () => takeLive(id);
+    row.querySelector('.x').onclick = () => {
+      delPick(id); if(soloId === id) soloId = null;
+      saveSel(); renderCats(); render(); if(onAir) publish();
+    };
+    row.addEventListener('dragstart', e => {
+      dragId = id; row.classList.add('drag'); e.dataTransfer.effectAllowed = 'move';
+    });
+    row.addEventListener('dragend', () => {
+      row.classList.remove('drag');
+      $('playlist').querySelectorAll('.pl').forEach(r => r.classList.remove('over'));
+    });
+    row.addEventListener('dragover', e => { e.preventDefault(); row.classList.add('over'); });
+    row.addEventListener('dragleave', () => row.classList.remove('over'));
+    row.addEventListener('drop', e => { e.preventDefault(); reorder(dragId, id); });
+  });
+}
+
+// Drop fromId immediately before toId -- intuitive in both directions.
+function reorder(fromId, toId){
+  if(fromId === toId) return;
+  const from = pick.indexOf(fromId);
+  if(from < 0) return;
+  pick.splice(from, 1);
+  pick.splice(pick.indexOf(toId), 0, fromId);
+  saveSel(); renderCats(); render(); if(onAir) publish();
+}
+
+function drawPreview(){
+  $('obsair').textContent = onAir ? 'ON AIR' : 'off air';
+  $('obsair').className = onAir ? 'live' : '';
+}
+
+// The iframe reloads only when the topic changes -- it picks up selections and
+// odds over Firebase on its own, exactly as the OBS source does. Reloading it
+// on every pick would restart the crawl and hide the real behaviour.
+function sizePreview(){
+  const box = $('obs');
+  if(box.clientWidth) $('obsframe').style.transform = `scale(${box.clientWidth / 864})`;
+}
+function mountPreview(topic){
+  // cb= busts the browser cache. Without it the preview happily shows a stale
+  // Display after a deploy, which makes it lie about what OBS will render --
+  // the one thing a preview must not do. Costs one fetch per control-page load.
+  $('obsframe').src = `display.html?topic=${encodeURIComponent(topic)}`
+                    + `&preview=1&cb=${Date.now()}`;
+  sizePreview();
+}
+addEventListener('resize', sizePreview);
+
+$('signin').addEventListener('click', signIn);
+$('who').addEventListener('click', () => { if(confirm('Sign out?')) _auth.signOut(); });
+_auth.onAuthStateChanged(u => {
+  const ok = !!u && /@jomboymedia\.com$/i.test(u.email || '');
+  if(u && !ok){ alert('Please use your @jomboymedia.com account.'); _auth.signOut(); return; }
+  user = ok ? u : null;
+  $('auth').className = ok ? 'in' : '';
+  $('who').textContent = ok ? u.email : '';
+  $('air').disabled = !ok;
+  $('air').title = ok ? '' : 'Sign in with your Jomboy account to control the ticker';
+  if(ok && onAir) publish();          // reassert state once authed
+});
+
+function publish(){
+  if(!user) return;                   // /state writes require Jomboy auth (rules 401 otherwise)
+  const items = selected().map(m => ({id:m.id, text:m.text, q:''}));
+  const speed = parseFloat($('speed').value) || 90;
+  const visible = onAir && (items.length > 0 || !!soloId);
+  _db.ref('odds/' + fbKey(subTopic) + '/state').set({
+    ts: Date.now(), visible, speed, items, solo: soloId || null
+  });
+}
+
+// Take Live: pin ONE line full-width over the crawl, held static. The ⚡ toggles
+// -- clicking the line that's already live clears it.
+function takeLive(id){
+  if(!user){ signIn(); return; }       // needs Jomboy auth to write /state
+  if(soloId === id){ clearSolo(); return; }
+  soloId = id;
+  if(!onAir){ onAir = true; $('air').textContent = 'ON AIR — TAKE OFF'; $('air').className = 'on'; }
+  drawPreview(); render(); publish();     // render() refreshes both menu and playlist ⚡ state
+}
+function clearSolo(){ soloId = null; render(); publish(); }
+
+$('air').addEventListener('click', () => {
+  onAir = !onAir;
+  $('air').textContent = onAir ? 'ON AIR — TAKE OFF' : 'GO ON AIR';
+  $('air').className = onAir ? 'on' : 'primary';
+  publish();
+});
+$('soloclear').addEventListener('click', clearSolo);
+$('speed').addEventListener('change', () => { if(onAir) publish(); });
+$('q').addEventListener('input', render);
+$('grp').addEventListener('change', render);
+$('selAll').addEventListener('click', () => {
+  filtered().forEach(m => addPick(m.id)); saveSel(); renderCats(); render(); if(onAir) publish();
+});
+$('clear').addEventListener('click', () => {
+  pick.length = 0; saveSel(); renderCats(); render(); if(onAir) publish();
+});
+$('catAll').addEventListener('click', () => {
+  hidden.clear(); saveHidden(); renderCats(); render();
+});
+$('catNone').addEventListener('click', () => {
+  all.forEach(m => hidden.add(topicOf(m))); saveHidden(); renderCats(); render();
+});
+
+function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+</script>
+</body>
+</html>

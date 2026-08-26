@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Odds Ticker — Display</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Sofia+Sans+Semi+Condensed:wght@400;500;700;800&display=swap" rel="stylesheet"/>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;background:transparent;}
+body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
+
+/* The page IS the bar. Set the OBS Browser Source to 864x119 and position it in
+   OBS -- that is the exact on-air size of the Singular build (its 1920x264 PNG
+   sits in a 45% box with object-fit contain: 1920*.45 = 864 wide, and
+   864*264/1920 = 119 tall). The 7.27 aspect matches, so no distortion.
+
+   Background is the SAME bar.png the Singular composition uses,
+   not a CSS re-creation. Gradient, flag mark, chartreuse rule and caption are
+   therefore pixel-identical by construction rather than by eyeballing, and
+   regenerating the art updates both builds at once. */
+#bar{
+  position:fixed;inset:0;z-index:8;
+  transform:translateY(0);transition:transform .45s cubic-bezier(.16,1,.3,1);
+}
+#bar.hidden{transform:translateY(115%);}
+/* An <img> layer rather than a CSS background-image: identical result, but it
+   also renders under file:// in preview tooling that strips background URLs,
+   so the graphic can be verified without standing up a web server. */
+#art{position:absolute;inset:0;width:100%;height:100%;display:block;}
+
+/* Text window is the Singular Text Ticker's box, converted to percentages of
+   the bar so it holds at any source size. In that sub-composition the widget is
+   707x83 centred at (108, 427) and the bar renders 864x118.8 spanning y
+   375.8-494.6, sharing one coordinate space:
+     left   135/864          = 15.6%   (left edge sits just right of the flag)
+     width  707/864          = 81.8%
+     top    (385.2-375.8)/118.8 = 7.8%  (omit this and the copy rides high)
+     height  83/118.8        = 69.9%
+   Change these only alongside the Singular values, or the two builds drift. */
+#viewport{position:absolute;left:15.6%;width:81.8%;top:7.8%;height:69.9%;overflow:hidden;}
+#track{position:absolute;top:0;left:0;height:100%;white-space:nowrap;will-change:transform;}
+.item{display:inline-flex;align-items:center;height:100%;
+  font-family:'Sofia Sans Semi Condensed',sans-serif;font-weight:700;
+  font-size:48vh;letter-spacing:.4px;color:#FAFAFA;vertical-align:top;}
+.item .q{font-weight:500;color:#F1FD0E;margin-right:1.4vh;font-size:39vh;letter-spacing:1px;}
+.sep{color:#F1FD0E;font-size:19vh;padding:0 3.6vh;}
+
+/* Solo takeover: one line pinned full-width and held STATIC (not crawling) so
+   it can be read at a glance, overriding the crawl until cleared. Slides up from
+   below to appear and back down to leave (translateY on the box); the text
+   auto-fits with its own scale so the whole line always shows. */
+#solo{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  overflow:hidden;transform:translateY(115%);
+  transition:transform .5s cubic-bezier(.16,1,.3,1);}
+#solo.on{transform:translateY(0);}
+#viewport.solo #track{visibility:hidden;}
+#solo .txt{font-family:'Sofia Sans Semi Condensed',sans-serif;font-weight:700;
+  font-size:48vh;letter-spacing:.4px;color:#FAFAFA;white-space:nowrap;transform-origin:center;}
+
+</style>
+</head>
+<body>
+<div id="bar">
+  <img id="art" src="bar.png" alt=""/>
+  <div id="viewport"><div id="track"></div><div id="solo"><span class="txt"></span></div></div>
+</div>
+
+<script>
+// ── Firebase (shared house project) ──
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCKB90Xi33pxNw2zdS6XoUImpGmBfs9M5E",
+  authDomain: "jm-odds-ticker.firebaseapp.com",
+  databaseURL: "https://jm-odds-ticker-default-rtdb.firebaseio.com",
+  projectId: "jm-odds-ticker",
+  storageBucket: "jm-odds-ticker.firebasestorage.app",
+  messagingSenderId: "1062781451132",
+  appId: "1:1062781451132:web:74a6acbe270a719ef2c2f9"
+};
+firebase.initializeApp(FIREBASE_CONFIG);
+const _db = firebase.database();
+function fbKey(t){ return t.trim().replace(/[.#$\[\]\/\s]+/g,'-'); }
+
+const params = new URLSearchParams(location.search);
+const TOPIC  = params.get('topic') || 'jomboy-odds';
+// ?bar= to point at different art without editing the file (sponsor swaps).
+const BAR    = params.get('bar');
+// ?preview=1 keeps the bar drawn even when off air, so the control page's
+// preview shows the graphic instead of an empty box before you take it live.
+// Never set this on the OBS source or the bar can't be taken off.
+const PREVIEW = params.get('preview') === '1';
+
+const bar  = document.getElementById('bar');
+const viewport = document.getElementById('viewport');
+const track = document.getElementById('track');
+const solo = document.getElementById('solo');
+const soloTxt = solo.querySelector('.txt');
+
+if(BAR) document.getElementById('art').src = BAR;
+
+let items = [];      // rendered lines, [{id, text, q}]
+let picked = [];     // the operator's selection, from /state
+let live = {};       // id -> current line, from /markets
+let soloId = null;   // one id pinned static over the crawl, or null
+let wasVisible = false;
+let speed = 90;
+let offset = 0, last = null, rotPtr = 0, lastTs = 0;
+
+// RTDB hands arrays back as index-keyed objects often enough to bite.
+const norm = x => !x ? [] : (Array.isArray(x) ? x : Object.values(x)).filter(Boolean);
+
+// The Display joins the selection against the live feed itself rather than
+// rendering whatever text the control page last published. That way the odds
+// keep updating with the feeder even if the producer closes the control tab --
+// otherwise the operator's browser is load-bearing for the whole show, and a
+// closed tab means a bar quietly crawling stale prices with no tell.
+// Published text is kept as the fallback for anything not in the current menu.
+function recompute(){
+  const next = picked.map(p => ({ id: p.id, q: p.q || '', text: live[p.id] || p.text || '' }))
+                     .filter(i => i.text);
+
+  // Only rebuild when the content actually changed -- reassigning on every
+  // heartbeat would restart the crawl mid-line and read as a stutter.
+  if(JSON.stringify(next.map(i => i.text)) === JSON.stringify(items.map(i => i.text))) return;
+  items = next;
+  rotPtr = 0;
+}
+
+function applyState(s){
+  if(!s || typeof s !== 'object') return;
+  if(!s.ts || s.ts <= lastTs) return;   // ignore replays of state we already have
+  lastTs = s.ts;
+  picked = norm(s.items);
+  soloId = s.solo || null;
+  if(Number.isFinite(s.speed)) speed = s.speed;
+
+  const visible = !(s.visible === false && !PREVIEW);
+  bar.classList.toggle('hidden', !visible);
+  // Coming on air: restart the crawl from the top so the operator's first
+  // playlist item is what viewers see first, not wherever it happened to be.
+  if(visible && !wasVisible){ offset = 0; rotPtr = 0; while(track.firstChild) track.removeChild(track.firstChild); }
+  wasVisible = visible;
+
+  recompute();
+  applySolo();
+}
+
+// Solo: show one line's full text, static and auto-fit to the bar width. Slides
+// up to appear, down to leave. The crawl stays hidden until the panel has fully
+// slid away, so the two never show through each other.
+let soloHideTimer = null;
+function applySolo(){
+  const on = !!soloId;
+  clearTimeout(soloHideTimer);
+  if(on){
+    const item = picked.find(p => p.id === soloId);
+    soloTxt.textContent = live[soloId] || (item && item.text) || '';
+    fitSolo();
+    viewport.classList.add('solo');   // hide the crawl behind it
+    solo.classList.add('on');         // slide up into view
+  } else {
+    solo.classList.remove('on');      // slide back down
+    soloHideTimer = setTimeout(() => { if(!soloId) viewport.classList.remove('solo'); }, 520);
+  }
+}
+function fitSolo(){
+  soloTxt.style.transform = 'scale(1)';
+  const avail = viewport.clientWidth, w = soloTxt.scrollWidth;
+  if(w > avail && avail) soloTxt.style.transform = `scale(${avail / w})`;
+}
+
+function applyMenu(v){
+  const mks = v && v.markets ? norm(v.markets) : [];
+  live = Object.fromEntries(mks.map(m => [m.id, m.text]));
+  recompute();
+  applySolo();   // keep the pinned line's odds current
+}
+
+// No connection indicator here on purpose: anything drawn in this page is
+// inside the OBS source and composites onto the program feed. The control
+// page carries the Firebase dot instead, where only the operator sees it.
+_db.ref('odds/' + fbKey(TOPIC) + '/state').on('value', snap => applyState(snap.val()));
+_db.ref('odds/' + fbKey(TOPIC) + '/markets').on('value', snap => applyMenu(snap.val()));
+
+// ── seamless scroll engine (never reloads on air) ──
+function spawn(){
+  if(!items.length) return false;
+  const m = items[rotPtr++ % items.length];
+  const el = document.createElement('span');
+  el.className = 'item';
+  el.innerHTML = `<span class="sep">◆</span><span class="q"></span><span class="txt"></span>`;
+  // textContent, not innerHTML -- market titles are third-party strings.
+  el.querySelector('.q').textContent = m.q || '';
+  el.querySelector('.txt').textContent = m.text || '';
+  track.appendChild(el);
+  return true;
+}
+function needSpawn(){
+  if(!items.length) return false;
+  const lastEl = track.lastChild;
+  if(!lastEl) return true;
+  return (lastEl.offsetLeft + lastEl.offsetWidth + offset) < viewport.clientWidth + 300;
+}
+function frame(t){
+  if(last === null) last = t;
+  const dt = Math.min((t - last)/1000, 0.05); last = t;
+  if(track.firstChild) offset -= speed * dt; else offset = 0;  // don't drift while empty
+  while(track.firstChild){
+    const c = track.firstChild;
+    if(c.offsetLeft + c.offsetWidth + offset < -5){ offset += c.offsetWidth; track.removeChild(c); }
+    else break;
+  }
+  let safety = 0;
+  while(needSpawn() && safety++ < 50){ if(!spawn()) break; }
+  track.style.transform = `translateX(${offset}px)`;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
