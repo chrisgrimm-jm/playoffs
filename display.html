@@ -39,15 +39,8 @@ body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
 .item .q{font-weight:500;color:#F1FD0E;margin-right:2px;font-size:46px;letter-spacing:1px;}
 .sep{color:#F1FD0E;font-size:23px;padding:0 4px;}
 
-/* Solo takeover: one line pinned and held STATIC, overriding the crawl. Slides
-   up to appear, down to leave; the text auto-fits to the bar width. */
-#solo{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  overflow:hidden;transform:translateY(130%);
-  transition:transform .5s cubic-bezier(.16,1,.3,1);}
-#solo.on{transform:translateY(0);}
-#viewport.solo #track{visibility:hidden;}
-#solo .txt{font-family:'Sofia Sans Semi Condensed',sans-serif;font-weight:700;
-  font-size:57px;letter-spacing:.4px;color:#FAFAFA;white-space:nowrap;transform-origin:center;}
+/* ⚡ Take Live crawls just the one bet through the normal engine below -- same
+   font, looping -- so there's no separate static/solo layer. */
 
 </style>
 </head>
@@ -56,7 +49,7 @@ body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
   <div id="barpos">
     <div id="bar">
       <img id="art" src="bar.png?v=2" alt=""/>
-      <div id="viewport"><div id="track"></div><div id="solo"><span class="txt"></span></div></div>
+      <div id="viewport"><div id="track"></div></div>
     </div>
   </div>
 </div>
@@ -88,8 +81,6 @@ const PREVIEW = params.get('preview') === '1';
 const bar  = document.getElementById('bar');
 const viewport = document.getElementById('viewport');
 const track = document.getElementById('track');
-const solo = document.getElementById('solo');
-const soloTxt = solo.querySelector('.txt');
 const stage = document.getElementById('stage');
 const barpos = document.getElementById('barpos');
 
@@ -133,8 +124,18 @@ const norm = x => !x ? [] : (Array.isArray(x) ? x : Object.values(x)).filter(Boo
 // closed tab means a bar quietly crawling stale prices with no tell.
 // Published text is kept as the fallback for anything not in the current menu.
 function recompute(){
-  const next = picked.map(p => ({ id: p.id, q: p.q || '', text: live[p.id] || p.text || '' }))
-                     .filter(i => i.text);
+  let next;
+  if(soloId){
+    // ⚡ Take Live: crawl JUST this one bet, same font, looping -- not crammed
+    // static. It may not be in the playlist (soloed straight from the menu), so
+    // take its text from the live feed.
+    const p = picked.find(x => x.id === soloId);
+    const text = live[soloId] || (p && p.text) || '';
+    next = text ? [{ id: soloId, q: (p && p.q) || '', text }] : [];
+  } else {
+    next = picked.map(p => ({ id: p.id, q: p.q || '', text: live[p.id] || p.text || '' }))
+                 .filter(i => i.text);
+  }
 
   // Only rebuild when the content actually changed -- reassigning on every
   // heartbeat would restart the crawl mid-line and read as a stutter.
@@ -159,38 +160,12 @@ function applyState(s){
   wasVisible = visible;
 
   recompute();
-  applySolo();
-}
-
-// Solo: show one line's full text, static and auto-fit to the bar width. Slides
-// up to appear, down to leave. The crawl stays hidden until the panel has fully
-// slid away, so the two never show through each other.
-let soloHideTimer = null;
-function applySolo(){
-  const on = !!soloId;
-  clearTimeout(soloHideTimer);
-  if(on){
-    const item = picked.find(p => p.id === soloId);
-    soloTxt.textContent = live[soloId] || (item && item.text) || '';
-    fitSolo();
-    viewport.classList.add('solo');   // hide the crawl behind it
-    solo.classList.add('on');         // slide up into view
-  } else {
-    solo.classList.remove('on');      // slide back down
-    soloHideTimer = setTimeout(() => { if(!soloId) viewport.classList.remove('solo'); }, 520);
-  }
-}
-function fitSolo(){
-  soloTxt.style.transform = 'scale(1)';
-  const avail = viewport.clientWidth, w = soloTxt.scrollWidth;
-  if(w > avail && avail) soloTxt.style.transform = `scale(${avail / w})`;
 }
 
 function applyMenu(v){
   const mks = v && v.markets ? norm(v.markets) : [];
   live = Object.fromEntries(mks.map(m => [m.id, m.text]));
   recompute();
-  applySolo();   // keep the pinned line's odds current
 }
 
 // No connection indicator here on purpose: anything drawn in this page is
