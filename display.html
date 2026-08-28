@@ -26,43 +26,40 @@ body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
    stays a fixed 864x119 design and its px text never needs to change. 864x119 is
    the Singular on-air size (1920x264 art in a 45% box). */
 #barpos{position:absolute;width:864px;height:119px;transform-origin:top left;}
-#bar{position:absolute;inset:0;z-index:8;overflow:hidden;
-  transform:translateY(0);transition:transform .45s cubic-bezier(.16,1,.3,1);}
-/* Slide fully off the bottom of the canvas -- the bar sits above the canvas
-   edge, so it needs more than its own height to clear and leave nothing on air. */
-#bar.hidden{transform:translateY(220%);}
-#art{position:absolute;inset:0;width:100%;height:100%;display:block;}
-
-/* Text window = Singular Text Ticker box as % of the 864x119 bar (left 15.6%,
-   width 81.8%, top 7.8%, height 69.9%). Font sizes are px at the 119px design
-   (the old vh values x 1.19); #barpos/#stage scale everything uniformly. */
-#viewport{position:absolute;left:15.6%;width:81.8%;top:7.8%;height:69.9%;overflow:hidden;}
-#track{position:absolute;top:0;left:0;height:100%;white-space:nowrap;will-change:transform;}
+/* Two stacked boxes, each a full 864x119 bar with its own art + crawling text.
+   #bar is the constant ticker (moneylines) at the bottom. #propbar is a second
+   box that pops UP above it when a bet is taken live (⚡), so the ticker keeps
+   going underneath and the prop is a separate box layered above -- not text
+   scrolling inside the same box. Both sit at bottom:0 of #barpos; #propbar (lower
+   z) hides below and rises up from behind #bar. */
+.box{position:absolute;left:0;bottom:0;width:864px;height:119px;overflow:hidden;
+  transition:transform .5s cubic-bezier(.16,1,.3,1);}
+#bar{z-index:2;transform:translateY(0);}
+#bar.hidden{transform:translateY(220%);}   /* off air: slide fully off-canvas */
+#propbar{z-index:1;transform:translateY(220%);}   /* hidden below until a bet is live */
+.box .art{position:absolute;inset:0;width:100%;height:100%;display:block;}
+/* Text window = Singular Text Ticker box as % of the 864x119 bar. Font px at the
+   119px design; #barpos/#stage scale everything uniformly. */
+.box .vp{position:absolute;left:15.6%;width:81.8%;top:7.8%;height:69.9%;overflow:hidden;}
+.box .track{position:absolute;top:0;left:0;height:100%;white-space:nowrap;will-change:transform;}
 .item{display:inline-flex;align-items:center;height:100%;
   font-family:'Sofia Sans Semi Condensed',sans-serif;font-weight:700;
   font-size:57px;letter-spacing:.4px;color:#FAFAFA;vertical-align:top;}
 .item .q{font-weight:500;color:#F1FD0E;margin-right:2px;font-size:46px;letter-spacing:1px;}
 .sep{color:#F1FD0E;font-size:23px;padding:0 4px;}
 
-/* ⚡ Take Live: the soloed bet crawls in its own layer, same box as the ticker
-   text, that POPS UP over the playlist crawl and slides away when cleared. The
-   playlist is hidden (.dim) while it's up, so clearing reveals it still running
-   -- or, if the playlist is off air, the whole bar slides away. */
-#solo{position:absolute;left:15.6%;width:81.8%;top:7.8%;height:69.9%;overflow:hidden;
-  transform:translateY(140%);transition:transform .5s cubic-bezier(.16,1,.3,1);}
-#solo.on{transform:translateY(0);}
-#solotrack{position:absolute;top:0;left:0;height:100%;white-space:nowrap;will-change:transform;}
-#viewport.dim{visibility:hidden;}
-
 </style>
 </head>
 <body>
 <div id="stage">
   <div id="barpos">
-    <div id="bar">
-      <img id="art" src="bar.png?v=2" alt=""/>
-      <div id="viewport"><div id="track"></div></div>
-      <div id="solo"><div id="solotrack"></div></div>
+    <div id="propbar" class="box">
+      <img class="art" src="bar.png?v=2" alt=""/>
+      <div class="vp"><div class="track"></div></div>
+    </div>
+    <div id="bar" class="box">
+      <img class="art" src="bar.png?v=2" alt=""/>
+      <div class="vp"><div class="track"></div></div>
     </div>
   </div>
 </div>
@@ -91,15 +88,14 @@ const BAR    = params.get('bar');
 // Never set this on the OBS source or the bar can't be taken off.
 const PREVIEW = params.get('preview') === '1';
 
-const bar  = document.getElementById('bar');
-const viewport = document.getElementById('viewport');
-const track = document.getElementById('track');
+const bar  = document.getElementById('bar');          // constant ticker (moneylines)
+const propbar = document.getElementById('propbar');   // pop-up box for a live bet
+const moneyVp = bar.querySelector('.vp'), moneyTrack = bar.querySelector('.track');
+const propVp = propbar.querySelector('.vp'), propTrack = propbar.querySelector('.track');
 const stage = document.getElementById('stage');
 const barpos = document.getElementById('barpos');
-const soloEl = document.getElementById('solo');
-const soloTrack = document.getElementById('solotrack');
 
-if(BAR) document.getElementById('art').src = BAR;
+if(BAR) document.querySelectorAll('.art').forEach(a => a.src = BAR);
 
 // ── canvas layout ──
 // Design canvas is 1920x1080. The bar is 864x119 (Singular on-air size); place
@@ -146,33 +142,27 @@ function recompute(){
   // heartbeat would restart the crawl mid-line and read as a stutter.
   if(JSON.stringify(next.map(i => i.text)) === JSON.stringify(items.map(i => i.text))) return;
   items = next;
-  playlist.resetRotation();
+  money.resetRotation();
 }
 
-// ⚡ Take Live: the soloed bet crawls in its own layer that pops up over the
-// playlist and slides away when cleared. The playlist keeps running underneath
-// (hidden), so taking the solo down returns to it -- or, if the playlist is off
-// air, the whole bar slides away. The bet may be soloed straight from the menu
-// (not in the playlist), so its text comes from the live feed.
-let soloHideTimer = null;
+// ⚡ Take Live: the bet crawls in its OWN box (#propbar) that pops up above the
+// constant ticker and slides away when cleared -- the ticker keeps going the
+// whole time. The bet may be soloed straight from the menu (not in the
+// playlist), so its text comes from the live feed.
+const PROP_GAP = 14;   // px between the two stacked boxes
+function positionProp(){
+  if(!soloId)                        propbar.style.transform = 'translateY(220%)';        // hidden below
+  else if(bar.classList.contains('hidden')) propbar.style.transform = 'translateY(0)';    // ticker off -> take its spot
+  else                               propbar.style.transform = 'translateY(-' + (119 + PROP_GAP) + 'px)'; // stack above
+}
 function applySolo(){
-  const on = !!soloId;
   const p = picked.find(x => x.id === soloId);
-  const text = on ? (live[soloId] || (p && p.text) || '') : '';
+  const text = soloId ? (live[soloId] || (p && p.text) || '') : '';
   const next = text ? [{ id: soloId, q: (p && p.q) || '', text }] : [];
   if(JSON.stringify(next.map(i => i.text)) !== JSON.stringify(soloItems.map(i => i.text))){
-    soloItems = next; soloScroll.resetRotation();
+    soloItems = next; prop.resetRotation();
   }
-  clearTimeout(soloHideTimer);
-  if(on){
-    viewport.classList.add('dim');   // hide the playlist crawl behind the solo
-    soloEl.classList.add('on');      // pop up
-  } else {
-    soloEl.classList.remove('on');   // slide away
-    // keep the playlist hidden until the solo has fully slid off, so the two
-    // never show through each other; then reveal the playlist crawl as-is.
-    soloHideTimer = setTimeout(() => { if(!soloId) viewport.classList.remove('dim'); }, 520);
-  }
+  positionProp();
 }
 
 function applyState(s){
@@ -185,9 +175,8 @@ function applyState(s){
 
   const visible = !(s.visible === false && !PREVIEW);
   bar.classList.toggle('hidden', !visible);
-  // Coming on air: restart the playlist crawl from the top so the operator's
-  // first item is what viewers see first.
-  if(visible && !wasVisible) playlist.reset();
+  // Coming on air: restart the ticker from the top so the first item shows first.
+  if(visible && !wasVisible) money.reset();
   wasVisible = visible;
 
   recompute();
@@ -207,7 +196,7 @@ function applyMenu(v){
 _db.ref('odds/' + fbKey(TOPIC) + '/state').on('value', snap => applyState(snap.val()));
 _db.ref('odds/' + fbKey(TOPIC) + '/markets').on('value', snap => applyMenu(snap.val()));
 
-// ── seamless scroll engine: one instance per layer (playlist + solo) ──
+// ── seamless scroll engine: one instance per box (ticker + prop) ──
 function makeScroller(track, viewport, getItems){
   let offset = 0, rotPtr = 0, last = null;
   function spawn(){
@@ -245,10 +234,10 @@ function makeScroller(track, viewport, getItems){
     start(){ requestAnimationFrame(frame); },
   };
 }
-const playlist = makeScroller(track, viewport, () => items);
-const soloScroll = makeScroller(soloTrack, soloEl, () => soloItems);
-playlist.start();
-soloScroll.start();
+const money = makeScroller(moneyTrack, moneyVp, () => items);      // constant ticker
+const prop  = makeScroller(propTrack, propVp, () => soloItems);    // pop-up bet box
+money.start();
+prop.start();
 </script>
 </body>
 </html>
