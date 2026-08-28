@@ -36,7 +36,9 @@ body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
   transition:transform .5s cubic-bezier(.16,1,.3,1);}
 #bar{z-index:2;transform:translateY(0);}
 #bar.hidden{transform:translateY(220%);}   /* off air: slide fully off-canvas */
-#propbar{z-index:1;transform:translateY(220%);}   /* hidden below until a bet is live */
+/* prop box is the TOP layer: it pops up into the same spot as the ticker and
+   covers it, ticker still running underneath. */
+#propbar{z-index:3;transform:translateY(220%);}   /* hidden below until a bet is live */
 .box .art{position:absolute;inset:0;width:100%;height:100%;display:block;}
 /* Text window = Singular Text Ticker box as % of the 864x119 bar. Font px at the
    119px design; #barpos/#stage scale everything uniformly. */
@@ -149,11 +151,10 @@ function recompute(){
 // constant ticker and slides away when cleared -- the ticker keeps going the
 // whole time. The bet may be soloed straight from the menu (not in the
 // playlist), so its text comes from the live feed.
-const PROP_GAP = 14;   // px between the two stacked boxes
 function positionProp(){
-  if(!soloId)                        propbar.style.transform = 'translateY(220%)';        // hidden below
-  else if(bar.classList.contains('hidden')) propbar.style.transform = 'translateY(0)';    // ticker off -> take its spot
-  else                               propbar.style.transform = 'translateY(-' + (119 + PROP_GAP) + 'px)'; // stack above
+  // Pop up into the ticker's own spot on the top layer (covering it), or slide
+  // back down off-canvas when cleared.
+  propbar.style.transform = soloId ? 'translateY(0)' : 'translateY(220%)';
 }
 function applySolo(){
   const p = picked.find(x => x.id === soloId);
