@@ -125,7 +125,8 @@ let live = {};       // id -> current line, from /markets
 let soloId = null;   // ⚡ one id crawling in the solo layer over the playlist, or null
 let soloItems = [];  // the solo layer's items ([the one bet] or [])
 let wasVisible = false;
-let speed = 90;
+let speed = 90;       // constant ticker (moneylines)
+let propSpeed = 90;   // pop-up bet box, controlled separately
 let lastTs = 0;
 
 // RTDB hands arrays back as index-keyed objects often enough to bite.
@@ -173,6 +174,7 @@ function applyState(s){
   picked = norm(s.items);
   soloId = s.solo || null;
   if(Number.isFinite(s.speed)) speed = s.speed;
+  if(Number.isFinite(s.propSpeed)) propSpeed = s.propSpeed;
 
   const visible = !(s.visible === false && !PREVIEW);
   bar.classList.toggle('hidden', !visible);
@@ -198,7 +200,7 @@ _db.ref('odds/' + fbKey(TOPIC) + '/state').on('value', snap => applyState(snap.v
 _db.ref('odds/' + fbKey(TOPIC) + '/markets').on('value', snap => applyMenu(snap.val()));
 
 // ── seamless scroll engine: one instance per box (ticker + prop) ──
-function makeScroller(track, viewport, getItems){
+function makeScroller(track, viewport, getItems, getSpeed){
   let offset = 0, rotPtr = 0, last = null;
   function spawn(){
     const list = getItems(); if(!list.length) return false;
@@ -218,7 +220,7 @@ function makeScroller(track, viewport, getItems){
   function frame(t){
     if(last === null) last = t;
     const dt = Math.min((t - last)/1000, 0.05); last = t;
-    if(track.firstChild) offset -= speed * dt; else offset = 0;  // don't drift while empty
+    if(track.firstChild) offset -= getSpeed() * dt; else offset = 0;  // don't drift while empty
     while(track.firstChild){
       const c = track.firstChild;
       if(c.offsetLeft + c.offsetWidth + offset < -5){ offset += c.offsetWidth; track.removeChild(c); }
@@ -235,8 +237,8 @@ function makeScroller(track, viewport, getItems){
     start(){ requestAnimationFrame(frame); },
   };
 }
-const money = makeScroller(moneyTrack, moneyVp, () => items);      // constant ticker
-const prop  = makeScroller(propTrack, propVp, () => soloItems);    // pop-up bet box
+const money = makeScroller(moneyTrack, moneyVp, () => items, () => speed);        // constant ticker
+const prop  = makeScroller(propTrack, propVp, () => soloItems, () => propSpeed);  // pop-up bet box
 money.start();
 prop.start();
 </script>
