@@ -104,9 +104,10 @@ if(BAR) document.querySelectorAll('.art').forEach(a => a.src = BAR);
 // and size it with ?x= ?y= ?w= (defaults: bottom-centre). The stage then scales
 // to the actual OBS source / preview window, so both look identical.
 const CANVAS_W = 1920, CANVAS_H = 1080, BAR_W = 864, BAR_H = 119;
+const NUDGE_X = 52, NUDGE_Y = 16;   // fine-position the bar (right, down); tweak here
 const barW = parseFloat(params.get('w')) || BAR_W;
-const barX = params.has('x') ? parseFloat(params.get('x')) : (CANVAS_W - barW) / 2;
-const barY = params.has('y') ? parseFloat(params.get('y')) : (CANVAS_H - barW * BAR_H / BAR_W - 60);
+const barX = params.has('x') ? parseFloat(params.get('x')) : (CANVAS_W - barW) / 2 + NUDGE_X;
+const barY = params.has('y') ? parseFloat(params.get('y')) : (CANVAS_H - barW * BAR_H / BAR_W - 60) + NUDGE_Y;
 barpos.style.left = barX + 'px';
 barpos.style.top = barY + 'px';
 barpos.style.transform = 'scale(' + (barW / BAR_W) + ')';
