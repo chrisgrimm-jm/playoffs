@@ -124,6 +124,7 @@ let items = [];      // rendered lines, [{id, text, q}]
 let picked = [];     // the operator's selection, from /state
 let live = {};       // id -> current line, from /markets
 let soloId = null;   // ⚡ one id crawling in the solo layer over the playlist, or null
+let lastSoloId = null;
 let soloItems = [];  // the solo layer's items ([the one bet] or [])
 let wasVisible = false;
 let speed = 90;       // constant ticker (moneylines)
@@ -162,7 +163,13 @@ function applySolo(){
   const p = picked.find(x => x.id === soloId);
   const text = soloId ? (live[soloId] || (p && p.text) || '') : '';
   const next = text ? [{ id: soloId, q: (p && p.q) || '', text }] : [];
-  if(JSON.stringify(next.map(i => i.text)) !== JSON.stringify(soloItems.map(i => i.text))){
+  if(soloId !== lastSoloId){
+    // A different bet was taken live (or it was cleared): wipe the box NOW so
+    // the next stat/odds shows immediately instead of after the old line
+    // finishes scrolling off.
+    soloItems = next; prop.reset(); lastSoloId = soloId;
+  } else if(JSON.stringify(next.map(i => i.text)) !== JSON.stringify(soloItems.map(i => i.text))){
+    // Same bet, only the odds moved: soft reset so it doesn't jump mid-scroll.
     soloItems = next; prop.resetRotation();
   }
   positionProp();
