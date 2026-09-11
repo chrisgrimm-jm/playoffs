@@ -506,8 +506,10 @@ function publish(){
   const items = selected().map(m => ({id:m.id, text:m.text, q:''}));
   const speed = parseFloat($('speed').value) || 90;
   const propSpeed = parseFloat($('propspeed').value) || 90;
-  // A solo is on stream on its own; the playlist crawl needs GO ON AIR + items.
-  const visible = !!soloId || (onAir && items.length > 0);
+  // `visible` governs ONLY the moneyline bar (playlist on air). The prop box
+  // shows independently via `solo` on the Display, so a live prop must NOT force
+  // the moneyline on -- otherwise clearing the prop drags the playlist off too.
+  const visible = onAir && items.length > 0;
   _db.ref('odds/' + fbKey(subTopic) + '/state').set({
     ts: Date.now(), visible, speed, propSpeed, items, solo: soloId || null
   });
