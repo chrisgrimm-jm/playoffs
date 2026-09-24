@@ -29,6 +29,7 @@ button{background:#2B283A;border:1px solid #3A3749;color:#fff;border-radius:8px;
 button:hover{border-color:#00B7FF;}
 button.primary{background:#E40000;border-color:#E40000;}
 button.on{background:#00B13C;border-color:#00B13C;}
+.pbpgame.on{border-color:#00B7FF;background:#2B283A;color:#fff;}
 button:disabled{opacity:.4;cursor:not-allowed;}
 label.inline{display:flex;align-items:center;gap:8px;font-size:15px;color:#c8c3d6;}
 
@@ -167,6 +168,17 @@ body{padding-right:360px;}
       <iframe id="obsframe" title="OBS preview" scrolling="no"></iframe>
     </div>
   </div>
+</div>
+
+<div class="bar" id="pbpbar">
+  <div class="row" style="margin-bottom:10px">
+    <strong style="font-family:'Bebas Neue',sans-serif;letter-spacing:2px;font-size:22px;color:#00B7FF">PLAY-BY-PLAY</strong>
+    <span class="sub" style="margin:0">Pick your game — home runs pop up over the moneyline automatically.</span>
+    <button id="pbprefresh">Refresh games</button>
+    <button id="pbpair" class="primary" style="margin-left:auto" disabled>PBP OFF AIR</button>
+  </div>
+  <div id="pbpgames" class="row"></div>
+  <div id="pbppick" class="sub" style="margin-top:8px">Loading today's games…</div>
 </div>
 
 <div class="bar">
@@ -499,6 +511,7 @@ _auth.onAuthStateChanged(u => {
   $('air').disabled = !ok;
   $('air').title = ok ? '' : 'Sign in with your Jomboy account to control the ticker';
   if(ok && onAir) publish();          // reassert state once authed
+  if(window.updatePBP) updatePBP();   // enable the PBP on-air button once authed
 });
 
 function publish(){
@@ -565,6 +578,66 @@ $('catAll').addEventListener('click', () => {
 $('catNone').addEventListener('click', () => {
   all.forEach(m => hidden.add(topicOf(m))); saveHidden(); renderCats(); render();
 });
+
+// ── Play-by-Play: pick the game to watch for home-run pop-ups ──
+// Writes odds/jomboy-odds/pbp {teams, onair}; the feeder reads it and fires the
+// HOME RUN pop-up onto this same topic's Display. Games come from MLB's schedule
+// so you can pick before first pitch.
+const PBP_TOPIC = 'jomboy-odds';
+const MLB_ID = {109:'ARI',144:'ATL',110:'BAL',111:'BOS',112:'CHC',145:'CWS',113:'CIN',
+  114:'CLE',115:'COL',116:'DET',117:'HOU',118:'KC',108:'LAA',119:'LAD',146:'MIA',
+  158:'MIL',142:'MIN',121:'NYM',147:'NYY',133:'ATH',143:'PHI',134:'PIT',135:'SD',
+  137:'SF',136:'SEA',138:'STL',139:'TB',140:'TEX',141:'TOR',120:'WSH'};
+let pbpTeams = null, pbpOnAir = false, pbpLabel = '', pbpGames = [];
+try { const s = JSON.parse(localStorage.getItem('pbpPick')||'null');
+  if(s){ pbpTeams = s.teams; pbpLabel = s.label; } } catch(e){}
+
+async function loadPBPGames(){
+  const d = new Date();
+  const date = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  $('pbppick').textContent = 'Loading today’s games…';
+  try {
+    const r = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${date}`);
+    const j = await r.json();
+    pbpGames = (j.dates && j.dates[0] && j.dates[0].games) || [];
+    renderPBPGames();
+  } catch(e){ $('pbppick').textContent = 'Could not load games — check the connection, then Refresh.'; }
+}
+function renderPBPGames(){
+  if(!pbpGames.length){ $('pbpgames').innerHTML = ''; $('pbppick').textContent = 'No MLB games listed today.'; return; }
+  $('pbpgames').innerHTML = pbpGames.map(g => {
+    const a = MLB_ID[g.teams.away.team.id]||'?', h = MLB_ID[g.teams.home.team.id]||'?';
+    const t = new Date(g.gameDate).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+    const sel = pbpLabel === `${a} @ ${h}` ? 'on' : '';
+    return `<button class="pbpgame ${sel}" data-a="${a}" data-h="${h}">${a} @ ${h} <span style="opacity:.55">${t}</span></button>`;
+  }).join('');
+  $('pbpgames').querySelectorAll('.pbpgame').forEach(b => {
+    b.onclick = () => {
+      pbpTeams = [b.dataset.a, b.dataset.h]; pbpLabel = `${b.dataset.a} @ ${b.dataset.h}`;
+      localStorage.setItem('pbpPick', JSON.stringify({teams:pbpTeams, label:pbpLabel}));
+      renderPBPGames(); updatePBP(); writePBP();
+    };
+  });
+  updatePBP();
+}
+function updatePBP(){
+  $('pbpair').disabled = !(pbpTeams && user);
+  $('pbpair').textContent = pbpOnAir ? 'PBP ON AIR — take off' : 'PBP ON AIR';
+  $('pbpair').className = pbpOnAir ? 'on' : 'primary';
+  $('pbppick').textContent = !pbpTeams ? 'Pick your game above.'
+    : pbpOnAir ? `● Watching ${pbpLabel} — home runs pop up automatically.`
+    : `Picked ${pbpLabel}. Hit PBP ON AIR when you’re ready (works before first pitch).`;
+}
+function writePBP(){
+  if(!user || !pbpTeams) return;      // /pbp writes require Jomboy auth (rules 401 otherwise)
+  _db.ref('odds/' + fbKey(PBP_TOPIC) + '/pbp').set({teams:pbpTeams, onair:pbpOnAir, ts:Date.now()});
+}
+$('pbprefresh').addEventListener('click', loadPBPGames);
+$('pbpair').addEventListener('click', () => {
+  if(!user){ signIn(); return; }
+  pbpOnAir = !pbpOnAir; updatePBP(); writePBP();
+});
+loadPBPGames();
 
 function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }

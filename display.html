@@ -50,6 +50,20 @@ body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
 .item .q{font-weight:500;color:#F1FD0E;margin-right:2px;font-size:46px;letter-spacing:1px;}
 .sep{color:#F1FD0E;font-size:23px;padding:0 4px;}
 
+/* HOME RUN pop-up: top layer (z 4), covers the moneyline when a homer lands,
+   slides away after a few seconds. Same bar art; static graphic, not a crawl.
+   Fanatics restyles .hr* freely — the trigger + Firebase alert stay the same. */
+#hrpop{z-index:4;transform:translateY(220%);background:linear-gradient(#0C0C0C,#000);}
+#hrpop.show{transform:translateY(0);}
+.hrwrap{position:absolute;left:4%;width:92%;top:0;height:100%;
+  display:flex;align-items:center;gap:16px;padding:0 8px;overflow:hidden;}
+.hrhead{font-family:'Bebas Neue',sans-serif;font-style:italic;font-size:58px;
+  letter-spacing:1px;color:#F1FD0E;line-height:1;white-space:nowrap;flex:0 0 auto;}
+.hrbatter{font-family:'Sofia Sans Semi Condensed',sans-serif;font-weight:800;
+  font-size:44px;color:#FAFAFA;white-space:nowrap;flex:0 0 auto;}
+.hrdetail{font-family:'Sofia Sans Semi Condensed',sans-serif;font-weight:500;
+  font-size:30px;color:#c8c3d6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.5px;}
+
 </style>
 </head>
 <body>
@@ -62,6 +76,13 @@ body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
     <div id="bar" class="box">
       <img class="art" src="bar.png?v=3" alt=""/>
       <div class="vp"><div class="track"></div></div>
+    </div>
+    <div id="hrpop" class="box">
+      <div class="hrwrap">
+        <span class="hrhead"></span>
+        <span class="hrbatter"></span>
+        <span class="hrdetail"></span>
+      </div>
     </div>
   </div>
 </div>
@@ -206,6 +227,26 @@ function applyMenu(v){
 // page carries the Firebase dot instead, where only the operator sees it.
 _db.ref('odds/' + fbKey(TOPIC) + '/state').on('value', snap => applyState(snap.val()));
 _db.ref('odds/' + fbKey(TOPIC) + '/markets').on('value', snap => applyMenu(snap.val()));
+
+// HOME RUN pop-up: the feeder writes /alert on a homer; pop the top-layer box
+// over the moneyline for a few seconds, then slide it away. ts-guarded so a stale
+// alert already in the DB doesn't re-fire on reload.
+const hrpop = document.getElementById('hrpop');
+let lastAlertTs = 0, alertTimer = null;
+function showAlert(a){
+  if(!a || !a.ts || a.ts <= lastAlertTs) return;
+  lastAlertTs = a.ts;
+  const remain = (a.secs || 9) - (Date.now() - a.ts) / 1000;
+  if(remain <= 0) return;                       // fired before this page was open
+  hrpop.querySelector('.hrhead').textContent = a.headline || 'HOME RUN';
+  hrpop.querySelector('.hrbatter').textContent = (a.batter || '') + (a.team ? ' (' + a.team + ')' : '');
+  const score = a.away ? a.away + ' ' + a.awayRuns + '-' + a.home + ' ' + a.homeRuns : '';
+  hrpop.querySelector('.hrdetail').textContent = [a.label, score].filter(Boolean).join(' · ');
+  hrpop.classList.add('show');
+  clearTimeout(alertTimer);
+  alertTimer = setTimeout(() => hrpop.classList.remove('show'), remain * 1000);
+}
+_db.ref('odds/' + fbKey(TOPIC) + '/alert').on('value', snap => showAlert(snap.val()));
 
 // ── seamless scroll engine: one instance per box (ticker + prop) ──
 function makeScroller(track, viewport, getItems, getSpeed){
