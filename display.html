@@ -55,14 +55,17 @@ body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
    Fanatics restyles .hr* freely — the trigger + Firebase alert stay the same. */
 #hrpop{z-index:4;transform:translateY(220%);background:linear-gradient(#0C0C0C,#000);}
 #hrpop.show{transform:translateY(0);}
-.hrwrap{position:absolute;left:4%;width:92%;top:0;height:100%;
-  display:flex;align-items:center;gap:16px;padding:0 8px;overflow:hidden;}
+/* Fanatics lockup, left, matching the moneyline bar's logo placement. */
+.hrlogo{position:absolute;left:2%;top:11%;height:78%;width:auto;}
+.hrwrap{position:absolute;left:15.6%;width:81.8%;top:0;height:100%;
+  display:flex;align-items:center;gap:18px;padding:0 6px;overflow:hidden;}
 .hrhead{font-family:'Bebas Neue',sans-serif;font-style:italic;font-size:58px;
   letter-spacing:1px;color:#F1FD0E;line-height:1;white-space:nowrap;flex:0 0 auto;}
-.hrbatter{font-family:'Sofia Sans Semi Condensed',sans-serif;font-weight:800;
-  font-size:44px;color:#FAFAFA;white-space:nowrap;flex:0 0 auto;}
-.hrdetail{font-family:'Sofia Sans Semi Condensed',sans-serif;font-weight:500;
-  font-size:30px;color:#c8c3d6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.5px;}
+/* the headline is fixed (flex:0 0 auto); the rest crawls in this viewport */
+.hrvp{position:relative;flex:1 1 auto;height:100%;overflow:hidden;}
+.hrtrack{position:absolute;top:0;left:0;height:100%;white-space:nowrap;will-change:transform;}
+#hrpop .item{font-family:'Sofia Sans Semi Condensed',sans-serif;font-weight:800;
+  font-size:44px;letter-spacing:.3px;color:#FAFAFA;}
 
 </style>
 </head>
@@ -78,10 +81,10 @@ body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
       <div class="vp"><div class="track"></div></div>
     </div>
     <div id="hrpop" class="box">
+      <img class="hrlogo" src="fanatics_logo.png" alt=""/>
       <div class="hrwrap">
         <span class="hrhead"></span>
-        <span class="hrbatter"></span>
-        <span class="hrdetail"></span>
+        <div class="hrvp"><div class="hrtrack"></div></div>
       </div>
     </div>
   </div>
@@ -232,19 +235,23 @@ _db.ref('odds/' + fbKey(TOPIC) + '/markets').on('value', snap => applyMenu(snap.
 // over the moneyline for a few seconds, then slide it away. ts-guarded so a stale
 // alert already in the DB doesn't re-fire on reload.
 const hrpop = document.getElementById('hrpop');
-let lastAlertTs = 0, alertTimer = null;
+const hrTrack = hrpop.querySelector('.hrtrack'), hrVp = hrpop.querySelector('.hrvp');
+let lastAlertTs = 0, alertTimer = null, hrItems = [], hrscroll = null;
 function showAlert(a){
   if(!a || !a.ts || a.ts <= lastAlertTs) return;
   lastAlertTs = a.ts;
   const remain = (a.secs || 9) - (Date.now() - a.ts) / 1000;
   if(remain <= 0) return;                       // fired before this page was open
   hrpop.querySelector('.hrhead').textContent = a.headline || 'HOME RUN';
-  hrpop.querySelector('.hrbatter').textContent = (a.batter || '') + (a.team ? ' (' + a.team + ')' : '');
+  // headline stays put; everything else crawls in the box to its right
   const score = a.away ? a.away + ' ' + a.awayRuns + '-' + a.home + ' ' + a.homeRuns : '';
-  hrpop.querySelector('.hrdetail').textContent = [a.label, score].filter(Boolean).join(' · ');
+  const line = [ (a.batter || '') + (a.team ? ' (' + a.team + ')' : ''), a.label, a.detail, score ]
+               .filter(Boolean).join('  ·  ');
+  hrItems = [{ q: '', text: line }];
+  if(hrscroll) hrscroll.reset();
   hrpop.classList.add('show');
   clearTimeout(alertTimer);
-  alertTimer = setTimeout(() => hrpop.classList.remove('show'), remain * 1000);
+  alertTimer = setTimeout(() => { hrpop.classList.remove('show'); hrItems = []; if(hrscroll) hrscroll.reset(); }, remain * 1000);
 }
 _db.ref('odds/' + fbKey(TOPIC) + '/alert').on('value', snap => showAlert(snap.val()));
 
@@ -290,6 +297,8 @@ const money = makeScroller(moneyTrack, moneyVp, () => items, () => speed);      
 const prop  = makeScroller(propTrack, propVp, () => soloItems, () => propSpeed);  // pop-up bet box
 money.start();
 prop.start();
+hrscroll = makeScroller(hrTrack, hrVp, () => hrItems, () => speed);   // HR detail crawl
+hrscroll.start();
 </script>
 </body>
 </html>
