@@ -236,21 +236,36 @@ _db.ref('odds/' + fbKey(TOPIC) + '/markets').on('value', snap => applyMenu(snap.
 const hrpop = document.getElementById('hrpop');
 const hrTrack = hrpop.querySelector('.hrtrack'), hrVp = hrpop.querySelector('.hrvp');
 let lastAlertTs = 0, alertTimer = null, hrItems = [], hrscroll = null;
+const HR_LOOPS = 2;   // stay up for this many full crawls of the text, then clear
+const HR_SPEED = 200; // px/s for the HR crawl — snappier than the moneyline so 2 loops land in a sane window
+function hrHide(){ hrpop.classList.remove('show'); hrItems = []; if(hrscroll) hrscroll.reset(); }
+function measureHR(line){
+  // width of one full crawl item (sep + text) in the real ticker font
+  const s = document.createElement('span'); s.className = 'item';
+  s.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap';
+  s.innerHTML = '<span class="sep">◆</span><span class="q"></span><span class="txt"></span>';
+  s.querySelector('.txt').textContent = line;
+  hrpop.appendChild(s); const w = s.offsetWidth; hrpop.removeChild(s); return w;
+}
 function showAlert(a){
   if(!a || !a.ts || a.ts <= lastAlertTs) return;
   lastAlertTs = a.ts;
-  const remain = (a.secs || 9) - (Date.now() - a.ts) / 1000;
-  if(remain <= 0) return;                       // fired before this page was open
+  if(a.clear){ clearTimeout(alertTimer); hrHide(); return; }   // manual take-down
   hrpop.querySelector('.hrhead').textContent = a.headline || 'HOME RUN';
   // headline stays put; everything else crawls in the box to its right
   const score = a.away ? a.away + ' ' + a.awayRuns + '-' + a.home + ' ' + a.homeRuns : '';
-  const line = [ (a.batter || '') + (a.team ? ' (' + a.team + ')' : ''), a.label, a.detail, score ]
+  // just who hit it + type + score — no play description (keeps the crawl short)
+  const line = [ (a.batter || '') + (a.team ? ' (' + a.team + ')' : ''), a.label, score ]
                .filter(Boolean).join('  ·  ');
   hrItems = [{ q: '', text: line }];
   if(hrscroll) hrscroll.reset();
+  // duration = HR_LOOPS full crawls (text width + one viewport), from the crawl speed
+  const dur = Math.max(6, Math.min((HR_LOOPS * measureHR(line) + (hrVp.clientWidth || 500)) / HR_SPEED, 20));
+  const age = (Date.now() - a.ts) / 1000;
+  if(age >= dur){ hrHide(); return; }           // stale alert already past its loops
   hrpop.classList.add('show');
   clearTimeout(alertTimer);
-  alertTimer = setTimeout(() => { hrpop.classList.remove('show'); hrItems = []; if(hrscroll) hrscroll.reset(); }, remain * 1000);
+  alertTimer = setTimeout(hrHide, (dur - age) * 1000);
 }
 _db.ref('odds/' + fbKey(TOPIC) + '/alert').on('value', snap => showAlert(snap.val()));
 
@@ -296,7 +311,7 @@ const money = makeScroller(moneyTrack, moneyVp, () => items, () => speed);      
 const prop  = makeScroller(propTrack, propVp, () => soloItems, () => propSpeed);  // pop-up bet box
 money.start();
 prop.start();
-hrscroll = makeScroller(hrTrack, hrVp, () => hrItems, () => speed);   // HR detail crawl
+hrscroll = makeScroller(hrTrack, hrVp, () => hrItems, () => HR_SPEED);   // HR detail crawl
 hrscroll.start();
 </script>
 </body>
