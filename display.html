@@ -237,8 +237,10 @@ const hrpop = document.getElementById('hrpop');
 const hrTrack = hrpop.querySelector('.hrtrack'), hrVp = hrpop.querySelector('.hrvp');
 let lastAlertTs = 0, alertTimer = null, hrItems = [], hrscroll = null;
 const HR_LOOPS = 2;   // stay up for this many full crawls of the text, then clear
-const HR_SPEED = 200; // px/s for the HR crawl — snappier than the moneyline so 2 loops land in a sane window
-function hrHide(){ hrpop.classList.remove('show'); hrItems = []; if(hrscroll) hrscroll.reset(); }
+// the HR crawl uses the SAME speed as the moneyline (the `speed` var)
+// slide the whole graphic down (0.5s), THEN clear the text once it's off-screen,
+// so it reads as sliding away rather than the text vanishing in place.
+function hrHide(){ hrpop.classList.remove('show'); setTimeout(() => { hrItems = []; if(hrscroll) hrscroll.reset(); }, 600); }
 function measureHR(line){
   // width of one full crawl item (sep + text) in the real ticker font
   const s = document.createElement('span'); s.className = 'item';
@@ -260,7 +262,7 @@ function showAlert(a){
   hrItems = [{ q: '', text: line }];
   if(hrscroll) hrscroll.reset();
   // duration = HR_LOOPS full crawls (text width + one viewport), from the crawl speed
-  const dur = Math.max(6, Math.min((HR_LOOPS * measureHR(line) + (hrVp.clientWidth || 500)) / HR_SPEED, 20));
+  const dur = Math.max(6, Math.min((HR_LOOPS * measureHR(line) + (hrVp.clientWidth || 500)) / (speed || 90), 30));
   const age = (Date.now() - a.ts) / 1000;
   if(age >= dur){ hrHide(); return; }           // stale alert already past its loops
   hrpop.classList.add('show');
@@ -311,7 +313,7 @@ const money = makeScroller(moneyTrack, moneyVp, () => items, () => speed);      
 const prop  = makeScroller(propTrack, propVp, () => soloItems, () => propSpeed);  // pop-up bet box
 money.start();
 prop.start();
-hrscroll = makeScroller(hrTrack, hrVp, () => hrItems, () => HR_SPEED);   // HR detail crawl
+hrscroll = makeScroller(hrTrack, hrVp, () => hrItems, () => speed);   // HR crawl — same speed as moneyline
 hrscroll.start();
 </script>
 </body>
