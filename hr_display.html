@@ -19,12 +19,13 @@ body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
 
 /* ── Style A: BAR — the banner at the top of screen, slides down/up. Same
    864x119 footprint as the moneyline bar, mirrored to the top edge. ── */
-.hbar{position:absolute;width:864px;height:119px;overflow:hidden;
-  background:linear-gradient(#0C0C0C,#000);border-radius:6px;
+.hbar{position:absolute;width:864px;height:119px;overflow:hidden;border-radius:6px;
   transform:translateY(-160%);transition:transform .5s cubic-bezier(.16,1,.3,1);}
 .hbar.show{transform:translateY(0);}
-.hrlogo{position:absolute;left:2%;top:11%;height:78%;width:auto;}
-.hrwrap{position:absolute;left:15.6%;width:81.8%;top:0;height:100%;
+/* same stadium art as the odds ticker (logo baked in, so no separate logo img);
+   text drops into the same band the moneyline uses. */
+.hbar .art{position:absolute;inset:0;width:100%;height:100%;display:block;}
+.hrwrap{position:absolute;left:15.6%;width:81.8%;top:7.8%;height:69.9%;
   display:flex;align-items:center;gap:18px;padding:0 6px;overflow:hidden;}
 .hrhead{font-family:'Bebas Neue',sans-serif;font-style:italic;font-size:58px;
   letter-spacing:1px;color:#F1FD0E;line-height:1;white-space:nowrap;flex:0 0 auto;}
@@ -42,7 +43,7 @@ body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
   box-shadow:0 12px 40px rgba(0,0,0,.55);padding:16px 20px 18px;
   transform:translateX(-160%);transition:transform .45s cubic-bezier(.16,1,.3,1);}
 .hbox.show{transform:translateX(0);}
-.blogo{height:26px;width:auto;display:block;margin-bottom:10px;opacity:.95;}
+.blogo{height:46px;width:auto;display:block;margin-bottom:12px;opacity:.95;}
 .bhead{font-family:'Bebas Neue',sans-serif;font-style:italic;font-size:52px;
   letter-spacing:1px;color:#F1FD0E;line-height:.9;}
 .bname{font-weight:800;font-size:34px;color:#FAFAFA;margin-top:6px;line-height:1.05;}
@@ -54,7 +55,7 @@ body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
 <body>
 <div id="stage">
   <div id="bar" class="hbar">
-    <img class="hrlogo" src="fanatics_logo.png" alt=""/>
+    <img class="art" src="bar.png?v=4" alt=""/>
     <div class="hrwrap">
       <span class="hrhead">HOME RUN</span>
       <div class="hrvp"><div class="hrtrack"></div></div>
