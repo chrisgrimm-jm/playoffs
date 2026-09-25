@@ -88,7 +88,7 @@ const TOPIC  = params.get('topic') || 'jomboy-hr';
 // ?style=bar|box LOCKS this source to one style; without it, the source follows
 // the Control toggle (pbp.style) live and defaults to bar.
 const STYLE_LOCK = params.get('style') === 'box' ? 'box' : (params.get('style') === 'bar' ? 'bar' : null);
-let curStyle = STYLE_LOCK || 'bar';
+let curStyle = STYLE_LOCK || 'box';   // corner box is the default (top-bar reachable only via ?style=bar)
 const DEMO   = params.get('demo') === '1';   // preview: fire a sample locally, no DB write
 const SPEED  = 90;                            // bar crawl speed, px/s (matches moneyline)
 

@@ -226,10 +226,6 @@ body.hr-active #rail{display:none;}
   <div class="bar">
     <div class="row">
       <label class="inline">Channel <input type="text" id="hrtopic" value="jomboy-hr" style="width:150px"></label>
-      <span class="seg" id="hrstyle">
-        <button data-style="bar" class="sel">Top bar</button>
-        <button data-style="box">Corner box</button>
-      </span>
       <label class="inline">Spoiler delay <input type="number" id="hrspoiler" value="0" min="0" max="60" style="width:66px" title="Hold each pop-up this long before showing"></label>
       <label class="inline">Display time <input type="number" id="hrhold" value="0" min="0" max="60" style="width:66px" title="How long it stays up. 0 = auto"></label>
       <button id="hrcopy" title="Copy the HR banner OBS Browser Source URL">Copy OBS URL</button>
@@ -642,24 +638,12 @@ document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
 // HR_FILE is sed-renamed to hr_display.html on deploy (same trick the odds
 // preview uses for display.html).
 const HR_FILE = 'hr_display.html';
-let hrStyle = 'bar';
-try { hrStyle = localStorage.getItem('hrStyle') || 'bar'; } catch(e){}
+const hrStyle = 'box';   // corner box is the only style now (top-bar option removed)
 const hrTopicVal = () => $('hrtopic').value.trim() || 'jomboy-hr';
 function mountHRPreview(){
   $('hrobsframe').src = HR_FILE + '?topic=' + encodeURIComponent(hrTopicVal())
                       + '&style=' + hrStyle + '&demo=1&cb=' + Date.now();
 }
-$('hrstyle').querySelectorAll('button').forEach(b => {
-  b.classList.toggle('sel', b.dataset.style === hrStyle);
-  b.onclick = () => {
-    hrStyle = b.dataset.style; try { localStorage.setItem('hrStyle', hrStyle); } catch(e){}
-    $('hrstyle').querySelectorAll('button').forEach(x => x.classList.toggle('sel', x === b));
-    mountHRPreview();   // preview switches immediately (locked via ?style)
-    // push style to the live overlay so OBS follows the toggle (needs auth; update
-    // so it doesn't depend on a game being picked yet).
-    if(user) _db.ref('odds/' + fbKey(hrTopicVal()) + '/pbp').update({ style: hrStyle });
-  };
-});
 $('hrtest').onclick = () => {
   // Signed in: fire a real sample on the actual overlay (OBS + any tab) via pbp.testTs.
   // The preview listens to the same topic, so it pops too. Not signed in: preview only.
