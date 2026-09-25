@@ -42,7 +42,7 @@ body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
   background:#0A0A0A;border-radius:5px;padding:9px 18px 9px 13px;
   transform:translateX(-160%);transition:transform .45s cubic-bezier(.16,1,.3,1);}
 .hbox.show{transform:translateX(0);}
-.hmark{height:52px;width:auto;flex:0 0 auto;}                 /* Fanatics F mark */
+.hmark{height:64px;width:auto;flex:0 0 auto;}                 /* Fanatics lockup (mark + wordmark) */
 .htext{display:flex;flex-direction:column;justify-content:center;line-height:1;}
 .bhead{font-family:'Sofia Sans Semi Condensed',sans-serif;font-weight:800;font-size:34px;
   letter-spacing:.4px;color:#F1FD0E;text-transform:uppercase;white-space:nowrap;}
@@ -61,7 +61,7 @@ body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
     </div>
   </div>
   <div id="box" class="hbox">
-    <img class="hmark" src="fanatics_mark.png" alt=""/>
+    <img class="hmark" src="fanatics_logo.png" alt=""/>
     <div class="htext">
       <div class="bhead">HOME RUN</div>
       <div class="bmeta"></div>
@@ -100,8 +100,8 @@ const bar = document.getElementById('bar'), box = document.getElementById('box')
 // the top edge; box: top-left card.
 bar.style.left = (params.has('x') ? parseFloat(params.get('x')) : (CANVAS_W - BAR_W) / 2 + NUDGE_X) + 'px';
 bar.style.top  = (params.has('y') ? parseFloat(params.get('y')) : 5) + 'px';
-box.style.left = (params.has('x') ? parseFloat(params.get('x')) : 24) + 'px';
-box.style.top  = (params.has('y') ? parseFloat(params.get('y')) : 24) + 'px';
+box.style.left = (params.has('x') ? parseFloat(params.get('x')) : 8) + 'px';    // matches the reference photo
+box.style.top  = (params.has('y') ? parseFloat(params.get('y')) : 36) + 'px';
 if(params.has('w')) box.style.width = parseFloat(params.get('w')) + 'px';   // else hug content (CSS max-content)
 
 // curStyle follows the Control toggle (pbp.style) live unless ?style= locks it.
