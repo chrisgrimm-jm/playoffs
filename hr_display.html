@@ -134,13 +134,14 @@ _db.ref('odds/' + fbKey(TOPIC) + '/pbp').on('value', s => {
   holdSecs = Number.isFinite(v.holdSecs) ? Math.max(0, v.holdSecs) : 0;
   // live style switch from the Control toggle (ignored if ?style= locks this source)
   if(v.style && !STYLE_LOCK && v.style !== curStyle){ applyStyle(v.style); hide(); }
-  // MLB API home-run detection: poll the picked game's live feed while on air.
+  // MLB API home-run detection: single picked game, or "watch all live games."
   // Same source as the scorebug, so scores/plays stay in sync. (Skipped in demo.)
   const ng = Number.isFinite(v.gamePk) ? v.gamePk : (v.gamePk ? parseInt(v.gamePk, 10) : null);
-  const nOn = !!v.onair;
-  if(!DEMO && (ng !== gamePk || nOn !== mlbOn)){
-    gamePk = ng; mlbOn = nOn;
-    if(mlbOn && gamePk) startMLB(); else stopMLB();
+  const nOn = !!v.onair, nAll = !!v.allGames;
+  if(!DEMO && (nAll !== mlbAll || ng !== gamePk || nOn !== mlbOn)){
+    mlbAll = nAll; gamePk = ng; mlbOn = nOn;
+    stopMLB(); stopMLBAll();
+    if(mlbOn){ if(mlbAll) startMLBAll(); else if(gamePk) startMLB(); }
   }
   // On the first snapshot, adopt the existing command timestamps WITHOUT acting --
   // otherwise every page load / OBS scene activation would replay the last test or
@@ -166,23 +167,15 @@ _db.ref('odds/' + fbKey(TOPIC) + '/pbp').on('value', s => {
   }
 });
 
-// ── MLB API: poll the picked game's live feed and fire on each new home run.
-// statsapi is the same source the scorebug uses, so the score on the pop-up
-// matches the scorebug. Dedup by atBatIndex; the first poll seeds history so
-// earlier homers in the game don't all fire when you go on air. ──
-let gamePk = null, mlbOn = false, mlbTimer = null, mlbSeen = new Set(), mlbSeeded = false;
+// ── MLB API: poll a game's live feed and fire on each new home run. statsapi
+// is the same source the scorebug uses, so the score on the pop-up matches the
+// scorebug. Dedup by atBatIndex; the first poll seeds history so earlier homers
+// in the game don't all fire when you go on air. Shared by single-game mode and
+// "watch all live games" mode (each game gets its own seen-set/seeded flag). ──
 const RBI_LABEL = { 1: 'SOLO', 2: '2-RUN', 3: '3-RUN', 4: 'GRAND SLAM' };
-function stopMLB(){ if(mlbTimer){ clearInterval(mlbTimer); mlbTimer = null; } }
-function startMLB(){
-  stopMLB(); mlbSeen = new Set(); mlbSeeded = false;
-  if(!gamePk) return;
-  pollMLB();
-  mlbTimer = setInterval(pollMLB, 12000);   // one game, ~12s cadence
-}
-async function pollMLB(){
-  if(!gamePk) return;
+async function pollGame(pk, seen, seededObj){
   try{
-    const r = await fetch('https://statsapi.mlb.com/api/v1.1/game/' + gamePk + '/feed/live');
+    const r = await fetch('https://statsapi.mlb.com/api/v1.1/game/' + pk + '/feed/live');
     const j = await r.json();
     const away = ((j.gameData||{}).teams||{}).away || {}, home = ((j.gameData||{}).teams||{}).home || {};
     const plays = (((j.liveData||{}).plays||{}).allPlays) || [];
@@ -191,9 +184,9 @@ async function pollMLB(){
       if(res.eventType !== 'home_run') continue;
       const key = (p.atBatIndex != null) ? p.atBatIndex : ((p.about||{}).atBatIndex);
       if(key == null) continue;
-      if(!mlbSeeded){ mlbSeen.add(key); continue; }   // seed existing homers, don't fire
-      if(mlbSeen.has(key)) continue;
-      mlbSeen.add(key);
+      if(!seededObj.v){ seen.add(key); continue; }   // seed existing homers, don't fire
+      if(seen.has(key)) continue;
+      seen.add(key);
       const rbi = res.rbi || 1;
       const half = (p.about||{}).halfInning;           // 'top' = away batting
       schedule({ kind: 'HR', ts: Date.now(),
@@ -204,8 +197,46 @@ async function pollMLB(){
         away: away.abbreviation, home: home.abbreviation,
         awayRuns: res.awayScore, homeRuns: res.homeScore });
     }
-    mlbSeeded = true;
+    seededObj.v = true;
   }catch(e){}
+}
+
+// ── single-game mode ──
+let gamePk = null, mlbOn = false, mlbTimer = null, mlbSeen = new Set(), mlbSeeded = { v: false };
+function stopMLB(){ if(mlbTimer){ clearInterval(mlbTimer); mlbTimer = null; } }
+function startMLB(){
+  stopMLB(); mlbSeen = new Set(); mlbSeeded = { v: false };
+  if(!gamePk) return;
+  pollGame(gamePk, mlbSeen, mlbSeeded);
+  mlbTimer = setInterval(() => pollGame(gamePk, mlbSeen, mlbSeeded), 12000);   // one game, ~12s cadence
+}
+
+// ── "watch all live games" mode: re-check today's schedule each cycle for
+// which games are live, and poll every live game's feed. Each game tracked
+// independently so joining a game mid-broadcast only seeds its OWN history. ──
+let mlbAll = false, allTimer = null, allGamesMap = new Map();   // gamePk -> {seen:Set, seeded:{v}}
+function stopMLBAll(){ if(allTimer){ clearInterval(allTimer); allTimer = null; } allGamesMap = new Map(); }
+async function pollAllLive(){
+  try{
+    const d = new Date();
+    const date = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    const r = await fetch('https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=' + date);
+    const j = await r.json();
+    const games = (j.dates && j.dates[0] && j.dates[0].games) || [];
+    const live = games.filter(g => (g.status||{}).abstractGameState === 'Live');
+    for(const g of live){
+      if(!allGamesMap.has(g.gamePk)) allGamesMap.set(g.gamePk, { seen: new Set(), seeded: { v: false } });
+    }
+    await Promise.all(live.map(g => {
+      const entry = allGamesMap.get(g.gamePk);
+      return pollGame(g.gamePk, entry.seen, entry.seeded);
+    }));
+  }catch(e){}
+}
+function startMLBAll(){
+  stopMLBAll();
+  pollAllLive();
+  allTimer = setInterval(pollAllLive, 15000);   // re-checks the live slate each cycle
 }
 
 // ── the crawl engine for the bar style (one line, loops HR_LOOPS times) ──

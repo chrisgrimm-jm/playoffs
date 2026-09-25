@@ -242,6 +242,7 @@ body.hr-active #rail{display:none;}
       <strong style="font-family:'Bebas Neue',sans-serif;letter-spacing:2px;font-size:22px;color:#00B7FF">PICK YOUR GAME</strong>
       <span class="sub" style="margin:0">Homers in this game pop up automatically.</span>
       <button id="pbprefresh">Refresh games</button>
+      <button id="pbpall">Watch ALL live games</button>
       <button id="pbpstop" style="margin-left:auto" disabled>Stop watching</button>
     </div>
     <div id="pbpgames" class="row"></div>
@@ -680,9 +681,9 @@ const MLB_ID = {109:'ARI',144:'ATL',110:'BAL',111:'BOS',112:'CHC',145:'CWS',113:
 // Picking a game auto-arms it (watching starts immediately, no separate
 // on-air step) -- one operator, one game at a time, so the pick already IS
 // the intent to watch. "Stop watching" clears the pick if you need to pause.
-let pbpTeams = null, pbpLabel = '', pbpGames = [], pbpGamePk = null;
+let pbpTeams = null, pbpLabel = '', pbpGames = [], pbpGamePk = null, pbpAll = false;
 try { const s = JSON.parse(localStorage.getItem('pbpPick')||'null');
-  if(s){ pbpTeams = s.teams; pbpLabel = s.label; pbpGamePk = s.gamePk || null; } } catch(e){}
+  if(s){ pbpTeams = s.teams; pbpLabel = s.label; pbpGamePk = s.gamePk || null; pbpAll = !!s.all; } } catch(e){}
 
 async function loadPBPGames(){
   const d = new Date();
@@ -707,27 +708,38 @@ function renderPBPGames(){
     b.onclick = () => {
       pbpTeams = [b.dataset.a, b.dataset.h]; pbpLabel = `${b.dataset.a} @ ${b.dataset.h}`;
       pbpGamePk = parseInt(b.dataset.pk, 10) || null;   // MLB gamePk drives HR polling on the Display
-      localStorage.setItem('pbpPick', JSON.stringify({teams:pbpTeams, label:pbpLabel, gamePk:pbpGamePk}));
+      pbpAll = false;   // picking one game turns off "watch all"
+      localStorage.setItem('pbpPick', JSON.stringify({teams:pbpTeams, label:pbpLabel, gamePk:pbpGamePk, all:false}));
       renderPBPGames(); updatePBP(); writePBP();
     };
   });
   updatePBP();
 }
 function updatePBP(){
-  $('pbpstop').disabled = !pbpTeams;
-  $('pbppick').textContent = !pbpTeams ? 'Pick your game above.'
+  $('pbpall').classList.toggle('on', pbpAll);
+  $('pbpstop').disabled = !(pbpTeams || pbpAll);
+  $('pbppick').textContent = pbpAll ? '● Watching ALL live games — home runs pop up automatically.'
+    : !pbpTeams ? 'Pick your game above, or watch every live game at once.'
     : `● Watching ${pbpLabel} — home runs pop up automatically.`;
 }
 function writePBP(){
   if(!user) return;      // /pbp writes require Jomboy auth (rules 401 otherwise)
-  _db.ref('odds/' + fbKey(hrTopicVal()) + '/pbp').set({teams:pbpTeams, gamePk:pbpGamePk || null,
-    onair:!!pbpTeams, spoiler: parseFloat($('hrspoiler').value) || 0,
+  _db.ref('odds/' + fbKey(hrTopicVal()) + '/pbp').set({teams: pbpAll ? null : pbpTeams,
+    gamePk: pbpAll ? null : (pbpGamePk || null), allGames: pbpAll,
+    onair: !!(pbpTeams || pbpAll), spoiler: parseFloat($('hrspoiler').value) || 0,
     holdSecs: parseFloat($('hrhold').value) || 0, style: hrStyle, ts: Date.now()});
 }
 $('pbprefresh').addEventListener('click', loadPBPGames);
+$('pbpall').addEventListener('click', () => {
+  if(!user){ signIn(); return; }
+  pbpAll = !pbpAll;
+  if(pbpAll){ pbpTeams = null; pbpGamePk = null; pbpLabel = ''; }   // all-games mode replaces a single pick
+  localStorage.setItem('pbpPick', JSON.stringify({teams:pbpTeams, label:pbpLabel, gamePk:pbpGamePk, all:pbpAll}));
+  renderPBPGames(); updatePBP(); writePBP();
+});
 $('pbpstop').addEventListener('click', () => {
   if(!user){ signIn(); return; }
-  pbpTeams = null; pbpGamePk = null; pbpLabel = '';
+  pbpTeams = null; pbpGamePk = null; pbpLabel = ''; pbpAll = false;
   localStorage.removeItem('pbpPick');
   renderPBPGames(); updatePBP(); writePBP();
 });
