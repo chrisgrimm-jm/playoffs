@@ -693,9 +693,9 @@ const MLB_ID = {109:'ARI',144:'ATL',110:'BAL',111:'BOS',112:'CHC',145:'CWS',113:
   114:'CLE',115:'COL',116:'DET',117:'HOU',118:'KC',108:'LAA',119:'LAD',146:'MIA',
   158:'MIL',142:'MIN',121:'NYM',147:'NYY',133:'ATH',143:'PHI',134:'PIT',135:'SD',
   137:'SF',136:'SEA',138:'STL',139:'TB',140:'TEX',141:'TOR',120:'WSH'};
-let pbpTeams = null, pbpOnAir = false, pbpLabel = '', pbpGames = [];
+let pbpTeams = null, pbpOnAir = false, pbpLabel = '', pbpGames = [], pbpGamePk = null;
 try { const s = JSON.parse(localStorage.getItem('pbpPick')||'null');
-  if(s){ pbpTeams = s.teams; pbpLabel = s.label; } } catch(e){}
+  if(s){ pbpTeams = s.teams; pbpLabel = s.label; pbpGamePk = s.gamePk || null; } } catch(e){}
 
 async function loadPBPGames(){
   const d = new Date();
@@ -714,12 +714,13 @@ function renderPBPGames(){
     const a = MLB_ID[g.teams.away.team.id]||'?', h = MLB_ID[g.teams.home.team.id]||'?';
     const t = new Date(g.gameDate).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
     const sel = pbpLabel === `${a} @ ${h}` ? 'on' : '';
-    return `<button class="pbpgame ${sel}" data-a="${a}" data-h="${h}">${a} @ ${h} <span style="opacity:.55">${t}</span></button>`;
+    return `<button class="pbpgame ${sel}" data-a="${a}" data-h="${h}" data-pk="${g.gamePk}">${a} @ ${h} <span style="opacity:.55">${t}</span></button>`;
   }).join('');
   $('pbpgames').querySelectorAll('.pbpgame').forEach(b => {
     b.onclick = () => {
       pbpTeams = [b.dataset.a, b.dataset.h]; pbpLabel = `${b.dataset.a} @ ${b.dataset.h}`;
-      localStorage.setItem('pbpPick', JSON.stringify({teams:pbpTeams, label:pbpLabel}));
+      pbpGamePk = parseInt(b.dataset.pk, 10) || null;   // MLB gamePk drives HR polling on the Display
+      localStorage.setItem('pbpPick', JSON.stringify({teams:pbpTeams, label:pbpLabel, gamePk:pbpGamePk}));
       renderPBPGames(); updatePBP(); writePBP();
     };
   });
@@ -735,9 +736,9 @@ function updatePBP(){
 }
 function writePBP(){
   if(!user || !pbpTeams) return;      // /pbp writes require Jomboy auth (rules 401 otherwise)
-  _db.ref('odds/' + fbKey(hrTopicVal()) + '/pbp').set({teams:pbpTeams, onair:pbpOnAir,
-    spoiler: parseFloat($('hrspoiler').value) || 0, holdSecs: parseFloat($('hrhold').value) || 0,
-    style: hrStyle, ts: Date.now()});
+  _db.ref('odds/' + fbKey(hrTopicVal()) + '/pbp').set({teams:pbpTeams, gamePk:pbpGamePk || null,
+    onair:pbpOnAir, spoiler: parseFloat($('hrspoiler').value) || 0,
+    holdSecs: parseFloat($('hrhold').value) || 0, style: hrStyle, ts: Date.now()});
 }
 $('pbprefresh').addEventListener('click', loadPBPGames);
 $('pbpair').addEventListener('click', () => {

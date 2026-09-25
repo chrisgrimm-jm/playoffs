@@ -38,17 +38,16 @@ body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
 
 /* ── Style B: BOX — compact card in the top-left corner, slides in from the
    left. No crawl, static text only. ── */
-.hbox{position:absolute;width:max-content;max-width:520px;background:linear-gradient(150deg,#141414,#000);
-  border-left:6px solid #F1FD0E;border-radius:10px;
-  box-shadow:0 12px 40px rgba(0,0,0,.55);padding:16px 20px 18px;
+.hbox{position:absolute;display:flex;align-items:center;gap:13px;width:max-content;max-width:600px;
+  background:#0A0A0A;border-radius:5px;padding:9px 18px 9px 13px;
   transform:translateX(-160%);transition:transform .45s cubic-bezier(.16,1,.3,1);}
 .hbox.show{transform:translateX(0);}
-.blogo{height:46px;width:auto;display:block;margin-bottom:12px;opacity:.95;}
-.bhead{font-family:'Bebas Neue',sans-serif;font-style:italic;font-size:52px;
-  letter-spacing:1px;color:#F1FD0E;line-height:.9;}
-.bname{font-weight:800;font-size:34px;color:#FAFAFA;margin-top:6px;line-height:1.05;}
-.bname .bteam{font-weight:700;color:#9a95ad;font-size:26px;margin-left:6px;}
-.bmeta{font-weight:700;font-size:24px;color:#c8c3d6;margin-top:4px;}
+.hmark{height:52px;width:auto;flex:0 0 auto;}                 /* Fanatics F mark */
+.htext{display:flex;flex-direction:column;justify-content:center;line-height:1;}
+.bhead{font-family:'Sofia Sans Semi Condensed',sans-serif;font-weight:800;font-size:34px;
+  letter-spacing:.4px;color:#F1FD0E;text-transform:uppercase;white-space:nowrap;}
+.bmeta{font-family:'Sofia Sans Semi Condensed',sans-serif;font-weight:800;font-size:29px;
+  letter-spacing:.4px;color:#FAFAFA;white-space:nowrap;margin-top:3px;}
 .bmeta .sep{color:#F1FD0E;padding:0 6px;}
 </style>
 </head>
@@ -62,10 +61,11 @@ body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
     </div>
   </div>
   <div id="box" class="hbox">
-    <img class="blogo" src="fanatics_logo.png" alt=""/>
-    <div class="bhead">HOME RUN</div>
-    <div class="bname"></div>
-    <div class="bmeta"></div>
+    <img class="hmark" src="fanatics_mark.png" alt=""/>
+    <div class="htext">
+      <div class="bhead">HOME RUN</div>
+      <div class="bmeta"></div>
+    </div>
   </div>
 </div>
 
@@ -132,6 +132,14 @@ _db.ref('odds/' + fbKey(TOPIC) + '/pbp').on('value', s => {
   holdSecs = Number.isFinite(v.holdSecs) ? Math.max(0, v.holdSecs) : 0;
   // live style switch from the Control toggle (ignored if ?style= locks this source)
   if(v.style && !STYLE_LOCK && v.style !== curStyle){ applyStyle(v.style); hide(); }
+  // MLB API home-run detection: poll the picked game's live feed while on air.
+  // Same source as the scorebug, so scores/plays stay in sync. (Skipped in demo.)
+  const ng = Number.isFinite(v.gamePk) ? v.gamePk : (v.gamePk ? parseInt(v.gamePk, 10) : null);
+  const nOn = !!v.onair;
+  if(!DEMO && (ng !== gamePk || nOn !== mlbOn)){
+    gamePk = ng; mlbOn = nOn;
+    if(mlbOn && gamePk) startMLB(); else stopMLB();
+  }
   // On the first snapshot, adopt the existing command timestamps WITHOUT acting --
   // otherwise every page load / OBS scene activation would replay the last test or
   // hide. Only changes after load fire.
@@ -155,6 +163,48 @@ _db.ref('odds/' + fbKey(TOPIC) + '/pbp').on('value', s => {
       batter: 'Test Batter', team: tm[0], away: tm[0], home: tm[1], awayRuns: 3, homeRuns: 2 });
   }
 });
+
+// ── MLB API: poll the picked game's live feed and fire on each new home run.
+// statsapi is the same source the scorebug uses, so the score on the pop-up
+// matches the scorebug. Dedup by atBatIndex; the first poll seeds history so
+// earlier homers in the game don't all fire when you go on air. ──
+let gamePk = null, mlbOn = false, mlbTimer = null, mlbSeen = new Set(), mlbSeeded = false;
+const RBI_LABEL = { 1: 'SOLO', 2: '2-RUN', 3: '3-RUN', 4: 'GRAND SLAM' };
+function stopMLB(){ if(mlbTimer){ clearInterval(mlbTimer); mlbTimer = null; } }
+function startMLB(){
+  stopMLB(); mlbSeen = new Set(); mlbSeeded = false;
+  if(!gamePk) return;
+  pollMLB();
+  mlbTimer = setInterval(pollMLB, 12000);   // one game, ~12s cadence
+}
+async function pollMLB(){
+  if(!gamePk) return;
+  try{
+    const r = await fetch('https://statsapi.mlb.com/api/v1.1/game/' + gamePk + '/feed/live');
+    const j = await r.json();
+    const away = ((j.gameData||{}).teams||{}).away || {}, home = ((j.gameData||{}).teams||{}).home || {};
+    const plays = (((j.liveData||{}).plays||{}).allPlays) || [];
+    for(const p of plays){
+      const res = p.result || {};
+      if(res.eventType !== 'home_run') continue;
+      const key = (p.atBatIndex != null) ? p.atBatIndex : ((p.about||{}).atBatIndex);
+      if(key == null) continue;
+      if(!mlbSeeded){ mlbSeen.add(key); continue; }   // seed existing homers, don't fire
+      if(mlbSeen.has(key)) continue;
+      mlbSeen.add(key);
+      const rbi = res.rbi || 1;
+      const half = (p.about||{}).halfInning;           // 'top' = away batting
+      schedule({ kind: 'HR', ts: Date.now(),
+        headline: rbi >= 4 ? 'GRAND SLAM' : 'HOME RUN',
+        label: RBI_LABEL[rbi] || (rbi + '-RUN'),
+        batter: ((p.matchup||{}).batter||{}).fullName || '',
+        team: half === 'top' ? away.abbreviation : home.abbreviation,
+        away: away.abbreviation, home: home.abbreviation,
+        awayRuns: res.awayScore, homeRuns: res.homeScore });
+    }
+    mlbSeeded = true;
+  }catch(e){}
+}
 
 // ── the crawl engine for the bar style (one line, loops HR_LOOPS times) ──
 const hrTrack = bar.querySelector('.hrtrack'), hrVp = bar.querySelector('.hrvp');
@@ -205,6 +255,12 @@ function measureHR(line){
   bar.appendChild(s); const w = s.offsetWidth; bar.removeChild(s); return w;
 }
 
+// batter last name, uppercase, suffix stripped (e.g. "Bobby Witt Jr." -> "WITT")
+function lastName(full){
+  if(!full) return '';
+  const parts = full.trim().split(/\s+/).filter(p => !/^(jr\.?|sr\.?|ii|iii|iv|v)$/i.test(p));
+  return (parts[parts.length - 1] || full).toUpperCase();
+}
 // ── build the display line(s) from an alert payload ──
 function lineFor(a){
   const score = a.away ? a.away + ' ' + a.awayRuns + ' - ' + a.home + ' ' + a.homeRuns : '';
@@ -216,14 +272,11 @@ function fill(a){
     bar.querySelector('.hrhead').textContent = head;
     hrItems = [{ text: lineFor(a) }]; hrscroll.reset();
   } else {
-    box.querySelector('.bhead').textContent = head;
-    box.querySelector('.bname').innerHTML = '';
-    box.querySelector('.bname').textContent = a.batter || '';
-    if(a.team){ const t = document.createElement('span'); t.className = 'bteam'; t.textContent = a.team;
-      box.querySelector('.bname').appendChild(t); }
-    const score = a.away ? a.away + ' ' + a.awayRuns + ' – ' + a.home + ' ' + a.homeRuns : '';
-    const meta = [a.label, score].filter(Boolean).join('  ·  ');
-    box.querySelector('.bmeta').textContent = meta;
+    // "HOME RUN (WITT)" over "KC 7 - 5 TEX" — matches the scorebug look.
+    const ln = lastName(a.batter);
+    box.querySelector('.bhead').textContent = head + (ln ? ' (' + ln + ')' : '');
+    box.querySelector('.bmeta').textContent =
+      a.away ? a.away + ' ' + a.awayRuns + ' - ' + a.homeRuns + ' ' + a.home : '';
   }
 }
 function durationFor(a){
