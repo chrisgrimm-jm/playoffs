@@ -71,7 +71,12 @@ button:disabled{opacity:.4;cursor:not-allowed;}
       </span>
     </label>
     <label class="fld">Spoiler delay (sec)
-      <input type="number" id="spoiler" value="0" min="0" max="60" step="1" style="width:110px">
+      <input type="number" id="spoiler" value="0" min="0" max="60" step="1" style="width:110px"
+             title="Hold each pop-up this long before showing, so it can't beat the broadcast">
+    </label>
+    <label class="fld">Display time (sec)
+      <input type="number" id="hold" value="0" min="0" max="60" step="1" style="width:110px"
+             title="How long it stays on screen. 0 = auto">
     </label>
     <button id="copyobs" title="Copy the OBS Browser Source URL" style="align-self:flex-end">Copy OBS URL</button>
     <div id="status"><span id="dot"></span><span id="stat">connecting…</span></div>
@@ -79,7 +84,8 @@ button:disabled{opacity:.4;cursor:not-allowed;}
   </div>
   <div class="row" style="margin-top:12px">
     <span class="head" style="font-size:13px;color:#6b6680">OBS PREVIEW · 1920 × 1080</span>
-    <button id="test" style="margin-left:auto">Test pop-up ▶</button>
+    <button id="hide" style="margin-left:auto">Hide now ✕</button>
+    <button id="test">Test pop-up ▶</button>
   </div>
   <div id="obs"><iframe id="obsframe" title="OBS preview" scrolling="no"></iframe></div>
 </div>
@@ -139,6 +145,12 @@ function mountPreview(){
 }
 mountPreview();
 $('test').onclick = () => { try { $('obsframe').contentWindow.postMessage('hrdemo','*'); } catch(e){} };
+// Hide now: force the on-air banner down + clear it in the preview too.
+$('hide').onclick = () => {
+  try { $('obsframe').contentWindow.postMessage('hrhide','*'); } catch(e){}   // preview: instant
+  if(!user){ signIn(); return; }
+  _db.ref('odds/' + fbKey(topic()) + '/pbp').update({ hideTs: Date.now() });   // on-air: needs auth
+};
 $('style').querySelectorAll('button').forEach(b => b.onclick = () => {
   style = b.dataset.style; localStorage.setItem('hrStyle', style);
   $('style').querySelectorAll('button').forEach(x => x.classList.toggle('sel', x === b));
@@ -209,12 +221,14 @@ function update(){
 function writePBP(){
   if(!user || !teams) return;   // /pbp writes require Jomboy auth (rules 401 otherwise)
   _db.ref('odds/' + fbKey(topic()) + '/pbp').set({
-    teams, onair: onAir, spoiler: parseFloat($('spoiler').value) || 0, ts: Date.now()
+    teams, onair: onAir, spoiler: parseFloat($('spoiler').value) || 0,
+    holdSecs: parseFloat($('hold').value) || 0, ts: Date.now()
   });
 }
 $('refresh').onclick = loadGames;
 $('air').onclick = () => { if(!user){ signIn(); return; } onAir = !onAir; update(); writePBP(); };
 $('spoiler').addEventListener('change', writePBP);
+$('hold').addEventListener('change', writePBP);
 loadGames();
 </script>
 </body>

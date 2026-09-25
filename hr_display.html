@@ -119,9 +119,17 @@ fitStage();
 // ── spoiler delay: hold every pop-up this many seconds so the graphic can't
 // beat the broadcast (stream runs behind the live data feed). Read live from the
 // config node so the operator can tune it mid-show without a reload. ──
-let spoiler = 0;
+let spoiler = 0, holdSecs = 0, lastHideProcessed = 0;
 _db.ref('odds/' + fbKey(TOPIC) + '/pbp').on('value', s => {
-  const v = s.val() || {}; if(Number.isFinite(v.spoiler)) spoiler = Math.max(0, v.spoiler);
+  const v = s.val() || {};
+  if(Number.isFinite(v.spoiler)) spoiler = Math.max(0, v.spoiler);
+  // holdSecs 0 = auto (bar: measured from the crawl, box: 8s). >0 overrides both.
+  holdSecs = Number.isFinite(v.holdSecs) ? Math.max(0, v.holdSecs) : 0;
+  // manual "Hide now" from Control: a hideTs at/after the alert on screen clears it.
+  if(Number.isFinite(v.hideTs) && v.hideTs > lastHideProcessed && v.hideTs >= lastAlertTs){
+    lastHideProcessed = v.hideTs;
+    clearTimeout(showTimer); clearTimeout(hideTimer); hide();
+  }
 });
 
 // ── the crawl engine for the bar style (one line, loops HR_LOOPS times) ──
@@ -195,6 +203,7 @@ function fill(a){
   }
 }
 function durationFor(a){
+  if(holdSecs > 0) return holdSecs;             // operator-set display time overrides
   if(STYLE === 'box') return 8;                 // static card: fixed hold
   const line = lineFor(a);
   return Math.max(6, Math.min((HR_LOOPS * measureHR(line) + (hrVp.clientWidth || 500)) / SPEED, 30));
@@ -226,6 +235,11 @@ function schedule(a){
   else fire(a, hold, -wait / 1000);
 }
 _db.ref('odds/' + fbKey(TOPIC) + '/alert').on('value', snap => schedule(snap.val()));
+
+// Control's "Hide now" posts this so it also clears the banner in the preview.
+addEventListener('message', e => {
+  if(e && e.data === 'hrhide'){ clearTimeout(showTimer); clearTimeout(hideTimer); hide(); }
+});
 
 // ── preview/demo: fire a sample without touching Firebase (Control preview) ──
 if(DEMO){
