@@ -38,7 +38,7 @@ body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
 
 /* ── Style B: BOX — compact card in the top-left corner, slides in from the
    left. No crawl, static text only. ── */
-.hbox{position:absolute;width:430px;background:linear-gradient(150deg,#141414,#000);
+.hbox{position:absolute;width:max-content;max-width:520px;background:linear-gradient(150deg,#141414,#000);
   border-left:6px solid #F1FD0E;border-radius:10px;
   box-shadow:0 12px 40px rgba(0,0,0,.55);padding:16px 20px 18px;
   transform:translateX(-160%);transition:transform .45s cubic-bezier(.16,1,.3,1);}
@@ -102,7 +102,7 @@ bar.style.left = (params.has('x') ? parseFloat(params.get('x')) : (CANVAS_W - BA
 bar.style.top  = (params.has('y') ? parseFloat(params.get('y')) : 5) + 'px';
 box.style.left = (params.has('x') ? parseFloat(params.get('x')) : 24) + 'px';
 box.style.top  = (params.has('y') ? parseFloat(params.get('y')) : 24) + 'px';
-box.style.width = (parseFloat(params.get('w')) || 430) + 'px';
+if(params.has('w')) box.style.width = parseFloat(params.get('w')) + 'px';   // else hug content (CSS max-content)
 
 // curStyle follows the Control toggle (pbp.style) live unless ?style= locks it.
 function activeEl(){ return curStyle === 'box' ? box : bar; }
