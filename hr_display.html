@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Home Run Banner — Display</title>
+<title>Home Run Banner — Display (build 2026-09-25e)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue:ital@0;1&family=Sofia+Sans+Semi+Condensed:wght@400;500;700;800&display=swap" rel="stylesheet"/>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
@@ -83,6 +83,8 @@ firebase.initializeApp(FIREBASE_CONFIG);
 const _db = firebase.database();
 const fbKey = t => t.trim().replace(/[.#$\[\]\/\s]+/g,'-');
 
+const HR_BUILD = '2026-09-25e-instant-test';
+console.log('[HR banner] build ' + HR_BUILD);
 const params = new URLSearchParams(location.search);
 const TOPIC  = params.get('topic') || 'jomboy-hr';
 // ?style=bar|box LOCKS this source to one style; without it, the source follows
