@@ -142,6 +142,25 @@ body{padding-right:360px;}
   flex:0 0 auto;cursor:pointer;}
 .pl .x:hover{color:#E40000;}
 #plempty{color:#6b6680;font-size:14px;font-style:italic;padding:16px 0;}
+/* tabs: Odds Ticker | Home Run on one control page */
+#topbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:6px;}
+.tabs{display:inline-flex;gap:6px;}
+.tab{background:#12111a;border:1px solid #3A3749;color:#9a95ad;font-weight:700;}
+.tab.sel{background:#E40000;border-color:#E40000;color:#fff;}
+#topbar #status{margin-left:auto;}
+body.hr-active{padding-right:26px;}
+body.hr-active #rail{display:none;}
+.seg{display:inline-flex;border:1px solid #3A3749;border-radius:8px;overflow:hidden;}
+.seg button{border:0;border-radius:0;background:#12111a;padding:9px 13px;}
+.seg button.sel{background:#00B7FF;color:#0C0C0C;}
+#hrobs{position:relative;width:100%;max-width:760px;aspect-ratio:16/9;border-radius:8px;overflow:hidden;
+  background-image:linear-gradient(45deg,#26242f 25%,transparent 25%),
+    linear-gradient(-45deg,#26242f 25%,transparent 25%),
+    linear-gradient(45deg,transparent 75%,#26242f 75%),
+    linear-gradient(-45deg,transparent 75%,#26242f 75%);
+  background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;}
+#hrobs iframe{position:absolute;inset:0;width:100%;height:100%;border:0;}
+
 @media(max-width:900px){body{padding-right:26px;}
   #rail{position:static;width:auto;height:auto;margin-top:20px;border-left:0;
     border-top:1px solid #3A3749;}}
@@ -149,7 +168,17 @@ body{padding-right:360px;}
 </head>
 <body>
 
-<h1>ODDS TICKER<span class="dot">.</span></h1>
+<div id="topbar">
+  <h1>ODDS TICKER<span class="dot">.</span></h1>
+  <div class="tabs">
+    <button class="tab sel" data-tab="odds">ODDS TICKER</button>
+    <button class="tab" data-tab="hr">HOME RUN</button>
+  </div>
+  <div id="status"><span id="dot"></span><span id="stat">connecting…</span></div>
+  <div id="auth"><button id="signin">Sign in</button><span id="who"></span></div>
+</div>
+
+<div id="tab-odds">
 <div class="sub">Fanatics Markets → OBS. Pick what crawls.</div>
 
 <div class="bar">
@@ -159,8 +188,6 @@ body{padding-right:360px;}
     <label class="inline">Prop speed <input type="text" id="propspeed" value="90" style="width:64px"></label>
     <input type="hidden" id="topic" value="jomboy-odds">
     <button id="copyobs" title="Copy the OBS Browser Source URL">Copy OBS URL</button>
-    <div id="status"><span id="dot"></span><span id="stat">connecting…</span></div>
-    <div id="auth"><button id="signin">Sign in</button><span id="who"></span></div>
   </div>
   <div id="obswrap">
     <div id="obshead"><span>OBS PREVIEW</span><span>1920 × 1080</span><span id="obsair"></span></div>
@@ -168,17 +195,6 @@ body{padding-right:360px;}
       <iframe id="obsframe" title="OBS preview" scrolling="no"></iframe>
     </div>
   </div>
-</div>
-
-<div class="bar" id="pbpbar">
-  <div class="row" style="margin-bottom:10px">
-    <strong style="font-family:'Bebas Neue',sans-serif;letter-spacing:2px;font-size:22px;color:#00B7FF">PLAY-BY-PLAY</strong>
-    <span class="sub" style="margin:0">Pick your game — home runs pop up over the moneyline automatically.</span>
-    <button id="pbprefresh">Refresh games</button>
-    <button id="pbpair" class="primary" style="margin-left:auto" disabled>PBP OFF AIR</button>
-  </div>
-  <div id="pbpgames" class="row"></div>
-  <div id="pbppick" class="sub" style="margin-top:8px">Loading today's games…</div>
 </div>
 
 <div class="bar">
@@ -203,6 +219,39 @@ body{padding-right:360px;}
 
 <div id="list"></div>
 <div id="empty">waiting for the feeder…<br><small>run: python3 odds_ticker.py --firebase jomboy-odds --loop 30</small></div>
+</div><!-- /tab-odds -->
+
+<div id="tab-hr" style="display:none">
+  <div class="sub">Home runs in your game pop up on the banner — its own OBS source, separate from the ticker.</div>
+  <div class="bar">
+    <div class="row">
+      <label class="inline">Channel <input type="text" id="hrtopic" value="jomboy-hr" style="width:150px"></label>
+      <span class="seg" id="hrstyle">
+        <button data-style="bar" class="sel">Top bar</button>
+        <button data-style="box">Corner box</button>
+      </span>
+      <label class="inline">Spoiler delay <input type="number" id="hrspoiler" value="0" min="0" max="60" style="width:66px" title="Hold each pop-up this long before showing"></label>
+      <label class="inline">Display time <input type="number" id="hrhold" value="0" min="0" max="60" style="width:66px" title="How long it stays up. 0 = auto"></label>
+      <button id="hrcopy" title="Copy the HR banner OBS Browser Source URL">Copy OBS URL</button>
+      <button id="hrhide">Hide now ✕</button>
+      <button id="hrtest">Test pop-up ▶</button>
+    </div>
+    <div id="obswrap">
+      <div id="obshead"><span>HR OBS PREVIEW</span><span>1920 × 1080</span></div>
+      <div id="hrobs"><iframe id="hrobsframe" title="HR preview" scrolling="no"></iframe></div>
+    </div>
+  </div>
+  <div class="bar" id="pbpbar">
+    <div class="row" style="margin-bottom:10px">
+      <strong style="font-family:'Bebas Neue',sans-serif;letter-spacing:2px;font-size:22px;color:#00B7FF">PICK YOUR GAME</strong>
+      <span class="sub" style="margin:0">Homers in this game pop up automatically.</span>
+      <button id="pbprefresh">Refresh games</button>
+      <button id="pbpair" class="primary" style="margin-left:auto" disabled>GO ON AIR</button>
+    </div>
+    <div id="pbpgames" class="row"></div>
+    <div id="pbppick" class="sub" style="margin-top:8px">Loading today's games…</div>
+  </div>
+</div>
 
 <aside id="rail">
   <h2>ON AIR <span class="n" id="plcount">0</span></h2>
@@ -579,11 +628,57 @@ $('catNone').addEventListener('click', () => {
   all.forEach(m => hidden.add(topicOf(m))); saveHidden(); renderCats(); render();
 });
 
-// ── Play-by-Play: pick the game to watch for home-run pop-ups ──
-// Writes odds/jomboy-odds/pbp {teams, onair}; the feeder reads it and fires the
-// HOME RUN pop-up onto this same topic's Display. Games come from MLB's schedule
-// so you can pick before first pitch.
-const PBP_TOPIC = 'jomboy-odds';
+// ── Tabs: Odds Ticker | Home Run (same page, separate OBS sources) ──
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  const hr = t.dataset.tab === 'hr';
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('sel', x === t));
+  $('tab-odds').style.display = hr ? 'none' : '';
+  $('tab-hr').style.display = hr ? '' : 'none';
+  document.body.classList.toggle('hr-active', hr);
+  if(hr) mountHRPreview();
+});
+
+// ── Home Run tab: own topic, style, spoiler/hold, preview, copy/hide/test ──
+// HR_FILE is sed-renamed to hr_display.html on deploy (same trick the odds
+// preview uses for display.html).
+const HR_FILE = 'hr_display.html';
+let hrStyle = 'bar';
+try { hrStyle = localStorage.getItem('hrStyle') || 'bar'; } catch(e){}
+const hrTopicVal = () => $('hrtopic').value.trim() || 'jomboy-hr';
+function mountHRPreview(){
+  $('hrobsframe').src = HR_FILE + '?topic=' + encodeURIComponent(hrTopicVal())
+                      + '&style=' + hrStyle + '&demo=1&cb=' + Date.now();
+}
+$('hrstyle').querySelectorAll('button').forEach(b => {
+  b.classList.toggle('sel', b.dataset.style === hrStyle);
+  b.onclick = () => {
+    hrStyle = b.dataset.style; try { localStorage.setItem('hrStyle', hrStyle); } catch(e){}
+    $('hrstyle').querySelectorAll('button').forEach(x => x.classList.toggle('sel', x === b));
+    mountHRPreview();
+  };
+});
+$('hrtest').onclick = () => { try { $('hrobsframe').contentWindow.postMessage('hrdemo','*'); } catch(e){} };
+$('hrhide').onclick = () => {
+  try { $('hrobsframe').contentWindow.postMessage('hrhide','*'); } catch(e){}     // preview: instant
+  if(!user){ signIn(); return; }
+  _db.ref('odds/' + fbKey(hrTopicVal()) + '/pbp').update({ hideTs: Date.now() });  // on-air: needs auth
+};
+$('hrcopy').onclick = async () => {
+  const dir = location.pathname.replace(/[^/]*$/, '');
+  const url = location.origin + dir + HR_FILE + '?topic=' + encodeURIComponent(hrTopicVal()) + '&style=' + hrStyle;
+  const btn = $('hrcopy'), lab = btn.textContent;
+  try { await navigator.clipboard.writeText(url); btn.textContent = 'Copied ✓'; }
+  catch(e){ prompt('Copy this OBS URL:', url); }
+  setTimeout(() => { btn.textContent = lab; }, 1500);
+};
+$('hrtopic').addEventListener('change', () => { mountHRPreview(); writePBP(); });
+$('hrspoiler').addEventListener('change', writePBP);
+$('hrhold').addEventListener('change', writePBP);
+
+// ── Pick the game to watch for home-run pop-ups (Home Run tab) ──
+// Writes odds/<hr topic>/pbp {teams, onair, spoiler, holdSecs}; the feeder reads
+// it and fires the HR banner. Games come from MLB's schedule so you can pick
+// before first pitch.
 const MLB_ID = {109:'ARI',144:'ATL',110:'BAL',111:'BOS',112:'CHC',145:'CWS',113:'CIN',
   114:'CLE',115:'COL',116:'DET',117:'HOU',118:'KC',108:'LAA',119:'LAD',146:'MIA',
   158:'MIL',142:'MIN',121:'NYM',147:'NYY',133:'ATH',143:'PHI',134:'PIT',135:'SD',
@@ -622,7 +717,7 @@ function renderPBPGames(){
 }
 function updatePBP(){
   $('pbpair').disabled = !(pbpTeams && user);
-  $('pbpair').textContent = pbpOnAir ? 'PBP ON AIR — take off' : 'PBP ON AIR';
+  $('pbpair').textContent = pbpOnAir ? 'ON AIR — take off' : 'GO ON AIR';
   $('pbpair').className = pbpOnAir ? 'on' : 'primary';
   $('pbppick').textContent = !pbpTeams ? 'Pick your game above.'
     : pbpOnAir ? `● Watching ${pbpLabel} — home runs pop up automatically.`
@@ -630,7 +725,9 @@ function updatePBP(){
 }
 function writePBP(){
   if(!user || !pbpTeams) return;      // /pbp writes require Jomboy auth (rules 401 otherwise)
-  _db.ref('odds/' + fbKey(PBP_TOPIC) + '/pbp').set({teams:pbpTeams, onair:pbpOnAir, ts:Date.now()});
+  _db.ref('odds/' + fbKey(hrTopicVal()) + '/pbp').set({teams:pbpTeams, onair:pbpOnAir,
+    spoiler: parseFloat($('hrspoiler').value) || 0, holdSecs: parseFloat($('hrhold').value) || 0,
+    ts: Date.now()});
 }
 $('pbprefresh').addEventListener('click', loadPBPGames);
 $('pbpair').addEventListener('click', () => {
