@@ -38,7 +38,7 @@ body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
 
 /* ── Style B: BOX — compact card in the top-left corner, slides in from the
    left. No crawl, static text only. ── */
-.hbox{position:absolute;display:flex;align-items:center;gap:13px;width:max-content;max-width:600px;
+.hbox{position:absolute;display:flex;align-items:center;gap:13px;width:max-content;max-width:900px;overflow:hidden;
   background:#0A0A0A;border-radius:5px;padding:9px 18px 9px 13px;
   transform:translateX(-160%);transition:transform .45s cubic-bezier(.16,1,.3,1);}
 .hbox.show{transform:translateX(0);}
@@ -160,7 +160,7 @@ _db.ref('odds/' + fbKey(TOPIC) + '/pbp').on('value', s => {
     lastTestProcessed = v.testTs;
     const tm = (v.teams && v.teams.length === 2) ? v.teams : ['NYM', 'TEX'];
     schedule({ kind: 'HR', ts: Date.now(), headline: 'HOME RUN', label: '2-RUN',
-      batter: 'Test Batter', team: tm[0], away: tm[0], home: tm[1], awayRuns: 3, homeRuns: 2 });
+      batter: 'Test Batter', team: tm[0], away: tm[0], home: tm[1], awayRuns: 3, homeRuns: 2, test: true });
   }
 });
 
@@ -306,7 +306,7 @@ function schedule(a){
   clearTimeout(showTimer);
   if(a.clear){ clearTimeout(hideTimer); hide(); return; }   // manual take-down
   const hold = durationFor(a);
-  const wait = (a.ts + spoiler * 1000) - Date.now();
+  const wait = a.test ? 0 : (a.ts + spoiler * 1000) - Date.now();   // test fires immediately
   if(wait <= -(hold * 1000)) return;                // whole window already elapsed (stale)
   if(wait > 0) showTimer = setTimeout(() => fire(a, hold, 0), wait);
   else fire(a, hold, -wait / 1000);
