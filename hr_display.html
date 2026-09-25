@@ -85,7 +85,10 @@ const fbKey = t => t.trim().replace(/[.#$\[\]\/\s]+/g,'-');
 
 const params = new URLSearchParams(location.search);
 const TOPIC  = params.get('topic') || 'jomboy-hr';
-const STYLE  = params.get('style') === 'box' ? 'box' : 'bar';   // ?style=bar|box
+// ?style=bar|box LOCKS this source to one style; without it, the source follows
+// the Control toggle (pbp.style) live and defaults to bar.
+const STYLE_LOCK = params.get('style') === 'box' ? 'box' : (params.get('style') === 'bar' ? 'bar' : null);
+let curStyle = STYLE_LOCK || 'bar';
 const DEMO   = params.get('demo') === '1';   // preview: fire a sample locally, no DB write
 const SPEED  = 90;                            // bar crawl speed, px/s (matches moneyline)
 
@@ -93,20 +96,22 @@ const SPEED  = 90;                            // bar crawl speed, px/s (matches 
 const CANVAS_W = 1920, CANVAS_H = 1080, BAR_W = 864, BAR_H = 119, NUDGE_X = 52;
 const stage = document.getElementById('stage');
 const bar = document.getElementById('bar'), box = document.getElementById('box');
-const active = STYLE === 'box' ? box : bar;
-(STYLE === 'box' ? bar : box).style.display = 'none';
+// Position both boxes once (only the active one is shown). Bar: fixed 864x119 at
+// the top edge; box: top-left card.
+bar.style.left = (params.has('x') ? parseFloat(params.get('x')) : (CANVAS_W - BAR_W) / 2 + NUDGE_X) + 'px';
+bar.style.top  = (params.has('y') ? parseFloat(params.get('y')) : 5) + 'px';
+box.style.left = (params.has('x') ? parseFloat(params.get('x')) : 24) + 'px';
+box.style.top  = (params.has('y') ? parseFloat(params.get('y')) : 24) + 'px';
+box.style.width = (parseFloat(params.get('w')) || 430) + 'px';
 
-if(STYLE === 'bar'){
-  // Fixed 864x119 footprint (same as the moneyline bar), mirrored to the top.
-  const x = params.has('x') ? parseFloat(params.get('x')) : (CANVAS_W - BAR_W) / 2 + NUDGE_X;
-  const y = params.has('y') ? parseFloat(params.get('y')) : 5;   // ~5px from the top edge
-  bar.style.left = x + 'px'; bar.style.top = y + 'px';
-} else {
-  const w = parseFloat(params.get('w')) || 430;
-  box.style.left = (params.has('x') ? parseFloat(params.get('x')) : 24) + 'px';
-  box.style.top  = (params.has('y') ? parseFloat(params.get('y')) : 24) + 'px';
-  box.style.width = w + 'px';
+// curStyle follows the Control toggle (pbp.style) live unless ?style= locks it.
+function activeEl(){ return curStyle === 'box' ? box : bar; }
+function applyStyle(s){
+  curStyle = STYLE_LOCK || (s === 'box' ? 'box' : 'bar');
+  bar.style.display = curStyle === 'bar' ? '' : 'none';
+  box.style.display = curStyle === 'box' ? '' : 'none';
 }
+applyStyle(curStyle);
 
 function fitStage(){
   const s = Math.min(innerWidth / CANVAS_W, innerHeight / CANVAS_H);
@@ -125,6 +130,8 @@ _db.ref('odds/' + fbKey(TOPIC) + '/pbp').on('value', s => {
   if(Number.isFinite(v.spoiler)) spoiler = Math.max(0, v.spoiler);
   // holdSecs 0 = auto (bar: measured from the crawl, box: 8s). >0 overrides both.
   holdSecs = Number.isFinite(v.holdSecs) ? Math.max(0, v.holdSecs) : 0;
+  // live style switch from the Control toggle (ignored if ?style= locks this source)
+  if(v.style && !STYLE_LOCK && v.style !== curStyle){ applyStyle(v.style); hide(); }
   // On the first snapshot, adopt the existing command timestamps WITHOUT acting --
   // otherwise every page load / OBS scene activation would replay the last test or
   // hide. Only changes after load fire.
@@ -188,7 +195,7 @@ function makeScroller(track, viewport, getItems, getSpeed){
   };
 }
 const hrscroll = makeScroller(hrTrack, hrVp, () => hrItems, () => SPEED);
-if(STYLE === 'bar') hrscroll.start();
+hrscroll.start();   // harmless when the box style is active (no items to scroll)
 
 function measureHR(line){
   const s = document.createElement('span'); s.className = 'item';
@@ -205,7 +212,7 @@ function lineFor(a){
 }
 function fill(a){
   const head = a.headline || 'HOME RUN';
-  if(STYLE === 'bar'){
+  if(curStyle === 'bar'){
     bar.querySelector('.hrhead').textContent = head;
     hrItems = [{ text: lineFor(a) }]; hrscroll.reset();
   } else {
@@ -221,16 +228,16 @@ function fill(a){
 }
 function durationFor(a){
   if(holdSecs > 0) return holdSecs;             // operator-set display time overrides
-  if(STYLE === 'box') return 8;                 // static card: fixed hold
+  if(curStyle === 'box') return 8;              // static card: fixed hold
   const line = lineFor(a);
   return Math.max(6, Math.min((HR_LOOPS * measureHR(line) + (hrVp.clientWidth || 500)) / SPEED, 30));
 }
 
 // ── show / hide ──
-function show(){ active.classList.add('show'); }
+function show(){ activeEl().classList.add('show'); }
 function hide(){
-  active.classList.remove('show');
-  if(STYLE === 'bar') setTimeout(() => { hrItems = []; hrscroll.reset(); }, 600);
+  bar.classList.remove('show'); box.classList.remove('show');   // clear both (safe across style switch)
+  setTimeout(() => { hrItems = []; hrscroll.reset(); }, 600);
 }
 
 // ── alert scheduling with the spoiler delay ──

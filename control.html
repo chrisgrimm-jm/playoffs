@@ -654,7 +654,10 @@ $('hrstyle').querySelectorAll('button').forEach(b => {
   b.onclick = () => {
     hrStyle = b.dataset.style; try { localStorage.setItem('hrStyle', hrStyle); } catch(e){}
     $('hrstyle').querySelectorAll('button').forEach(x => x.classList.toggle('sel', x === b));
-    mountHRPreview();
+    mountHRPreview();   // preview switches immediately (locked via ?style)
+    // push style to the live overlay so OBS follows the toggle (needs auth; update
+    // so it doesn't depend on a game being picked yet).
+    if(user) _db.ref('odds/' + fbKey(hrTopicVal()) + '/pbp').update({ style: hrStyle });
   };
 });
 $('hrtest').onclick = () => {
@@ -670,7 +673,9 @@ $('hrhide').onclick = () => {
 };
 $('hrcopy').onclick = async () => {
   const dir = location.pathname.replace(/[^/]*$/, '');
-  const url = location.origin + dir + HR_FILE + '?topic=' + encodeURIComponent(hrTopicVal()) + '&style=' + hrStyle;
+  // No &style= -> the OBS source follows the Control toggle live. (Add &style=bar
+  // or &style=box manually to lock one source, e.g. to run both at once.)
+  const url = location.origin + dir + HR_FILE + '?topic=' + encodeURIComponent(hrTopicVal());
   const btn = $('hrcopy'), lab = btn.textContent;
   try { await navigator.clipboard.writeText(url); btn.textContent = 'Copied ✓'; }
   catch(e){ prompt('Copy this OBS URL:', url); }
@@ -732,7 +737,7 @@ function writePBP(){
   if(!user || !pbpTeams) return;      // /pbp writes require Jomboy auth (rules 401 otherwise)
   _db.ref('odds/' + fbKey(hrTopicVal()) + '/pbp').set({teams:pbpTeams, onair:pbpOnAir,
     spoiler: parseFloat($('hrspoiler').value) || 0, holdSecs: parseFloat($('hrhold').value) || 0,
-    ts: Date.now()});
+    style: hrStyle, ts: Date.now()});
 }
 $('pbprefresh').addEventListener('click', loadPBPGames);
 $('pbpair').addEventListener('click', () => {
