@@ -242,7 +242,7 @@ body.hr-active #rail{display:none;}
       <strong style="font-family:'Bebas Neue',sans-serif;letter-spacing:2px;font-size:22px;color:#00B7FF">PICK YOUR GAME</strong>
       <span class="sub" style="margin:0">Homers in this game pop up automatically.</span>
       <button id="pbprefresh">Refresh games</button>
-      <button id="pbpair" class="primary" style="margin-left:auto" disabled>GO ON AIR</button>
+      <button id="pbpstop" style="margin-left:auto" disabled>Stop watching</button>
     </div>
     <div id="pbpgames" class="row"></div>
     <div id="pbppick" class="sub" style="margin-top:8px">Loading today's games…</div>
@@ -677,7 +677,10 @@ const MLB_ID = {109:'ARI',144:'ATL',110:'BAL',111:'BOS',112:'CHC',145:'CWS',113:
   114:'CLE',115:'COL',116:'DET',117:'HOU',118:'KC',108:'LAA',119:'LAD',146:'MIA',
   158:'MIL',142:'MIN',121:'NYM',147:'NYY',133:'ATH',143:'PHI',134:'PIT',135:'SD',
   137:'SF',136:'SEA',138:'STL',139:'TB',140:'TEX',141:'TOR',120:'WSH'};
-let pbpTeams = null, pbpOnAir = false, pbpLabel = '', pbpGames = [], pbpGamePk = null;
+// Picking a game auto-arms it (watching starts immediately, no separate
+// on-air step) -- one operator, one game at a time, so the pick already IS
+// the intent to watch. "Stop watching" clears the pick if you need to pause.
+let pbpTeams = null, pbpLabel = '', pbpGames = [], pbpGamePk = null;
 try { const s = JSON.parse(localStorage.getItem('pbpPick')||'null');
   if(s){ pbpTeams = s.teams; pbpLabel = s.label; pbpGamePk = s.gamePk || null; } } catch(e){}
 
@@ -711,23 +714,22 @@ function renderPBPGames(){
   updatePBP();
 }
 function updatePBP(){
-  $('pbpair').disabled = !(pbpTeams && user);
-  $('pbpair').textContent = pbpOnAir ? 'ON AIR — take off' : 'GO ON AIR';
-  $('pbpair').className = pbpOnAir ? 'on' : 'primary';
+  $('pbpstop').disabled = !pbpTeams;
   $('pbppick').textContent = !pbpTeams ? 'Pick your game above.'
-    : pbpOnAir ? `● Watching ${pbpLabel} — home runs pop up automatically.`
-    : `Picked ${pbpLabel}. Hit PBP ON AIR when you’re ready (works before first pitch).`;
+    : `● Watching ${pbpLabel} — home runs pop up automatically.`;
 }
 function writePBP(){
-  if(!user || !pbpTeams) return;      // /pbp writes require Jomboy auth (rules 401 otherwise)
+  if(!user) return;      // /pbp writes require Jomboy auth (rules 401 otherwise)
   _db.ref('odds/' + fbKey(hrTopicVal()) + '/pbp').set({teams:pbpTeams, gamePk:pbpGamePk || null,
-    onair:pbpOnAir, spoiler: parseFloat($('hrspoiler').value) || 0,
+    onair:!!pbpTeams, spoiler: parseFloat($('hrspoiler').value) || 0,
     holdSecs: parseFloat($('hrhold').value) || 0, style: hrStyle, ts: Date.now()});
 }
 $('pbprefresh').addEventListener('click', loadPBPGames);
-$('pbpair').addEventListener('click', () => {
+$('pbpstop').addEventListener('click', () => {
   if(!user){ signIn(); return; }
-  pbpOnAir = !pbpOnAir; updatePBP(); writePBP();
+  pbpTeams = null; pbpGamePk = null; pbpLabel = '';
+  localStorage.removeItem('pbpPick');
+  renderPBPGames(); updatePBP(); writePBP();
 });
 loadPBPGames();
 
