@@ -119,16 +119,33 @@ fitStage();
 // ── spoiler delay: hold every pop-up this many seconds so the graphic can't
 // beat the broadcast (stream runs behind the live data feed). Read live from the
 // config node so the operator can tune it mid-show without a reload. ──
-let spoiler = 0, holdSecs = 0, lastHideProcessed = 0;
+let spoiler = 0, holdSecs = 0, lastHideProcessed = 0, lastTestProcessed = 0, pbpFirst = true;
 _db.ref('odds/' + fbKey(TOPIC) + '/pbp').on('value', s => {
   const v = s.val() || {};
   if(Number.isFinite(v.spoiler)) spoiler = Math.max(0, v.spoiler);
   // holdSecs 0 = auto (bar: measured from the crawl, box: 8s). >0 overrides both.
   holdSecs = Number.isFinite(v.holdSecs) ? Math.max(0, v.holdSecs) : 0;
+  // On the first snapshot, adopt the existing command timestamps WITHOUT acting --
+  // otherwise every page load / OBS scene activation would replay the last test or
+  // hide. Only changes after load fire.
+  if(pbpFirst){
+    lastTestProcessed = Number.isFinite(v.testTs) ? v.testTs : 0;
+    lastHideProcessed = Number.isFinite(v.hideTs) ? v.hideTs : 0;
+    pbpFirst = false; return;
+  }
   // manual "Hide now" from Control: a hideTs at/after the alert on screen clears it.
   if(Number.isFinite(v.hideTs) && v.hideTs > lastHideProcessed && v.hideTs >= lastAlertTs){
     lastHideProcessed = v.hideTs;
     clearTimeout(showTimer); clearTimeout(hideTimer); hide();
+  }
+  // "Test pop-up" from Control: fire a sample HR on the real overlay (OBS + tabs),
+  // using the picked teams. Routed through pbp (operator-writable) so it needs no
+  // admin write to the locked alert node.
+  if(Number.isFinite(v.testTs) && v.testTs > lastTestProcessed){
+    lastTestProcessed = v.testTs;
+    const tm = (v.teams && v.teams.length === 2) ? v.teams : ['NYM', 'TEX'];
+    schedule({ kind: 'HR', ts: Date.now(), headline: 'HOME RUN', label: '2-RUN',
+      batter: 'Test Batter', team: tm[0], away: tm[0], home: tm[1], awayRuns: 3, homeRuns: 2 });
   }
 });
 

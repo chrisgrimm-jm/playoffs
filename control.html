@@ -657,7 +657,12 @@ $('hrstyle').querySelectorAll('button').forEach(b => {
     mountHRPreview();
   };
 });
-$('hrtest').onclick = () => { try { $('hrobsframe').contentWindow.postMessage('hrdemo','*'); } catch(e){} };
+$('hrtest').onclick = () => {
+  // Signed in: fire a real sample on the actual overlay (OBS + any tab) via pbp.testTs.
+  // The preview listens to the same topic, so it pops too. Not signed in: preview only.
+  if(user){ _db.ref('odds/' + fbKey(hrTopicVal()) + '/pbp').update({ testTs: Date.now() }); }
+  else { try { $('hrobsframe').contentWindow.postMessage('hrdemo','*'); } catch(e){} signIn(); }
+};
 $('hrhide').onclick = () => {
   try { $('hrobsframe').contentWindow.postMessage('hrhide','*'); } catch(e){}     // preview: instant
   if(!user){ signIn(); return; }
