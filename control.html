@@ -640,6 +640,11 @@ document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
 // preview uses for display.html).
 const HR_FILE = 'hr_display.html';
 const hrStyle = 'box';   // corner box is the only style now (top-bar option removed)
+// Bumped on every deploy that changes hr_display.html. Baked into the
+// copied OBS URL as &b= so a real update forces OBS to load a genuinely
+// different resource -- no more relying on "refresh cache" in OBS, which is
+// easy to miss. Keep this in sync with HR_BUILD in hr_display.html.
+const HR_BUILD = '2026-09-25f-watch-all';
 const hrTopicVal = () => $('hrtopic').value.trim() || 'jomboy-hr';
 function mountHRPreview(){
   $('hrobsframe').src = HR_FILE + '?topic=' + encodeURIComponent(hrTopicVal())
@@ -658,9 +663,9 @@ $('hrhide').onclick = () => {
 };
 $('hrcopy').onclick = async () => {
   const dir = location.pathname.replace(/[^/]*$/, '');
-  // No &style= -> the OBS source follows the Control toggle live. (Add &style=bar
-  // or &style=box manually to lock one source, e.g. to run both at once.)
-  const url = location.origin + dir + HR_FILE + '?topic=' + encodeURIComponent(hrTopicVal());
+  // &b= forces OBS to fetch fresh instead of serving a cached older build --
+  // re-copy this URL into OBS any time I say there's a real update.
+  const url = location.origin + dir + HR_FILE + '?topic=' + encodeURIComponent(hrTopicVal()) + '&b=' + HR_BUILD;
   const btn = $('hrcopy'), lab = btn.textContent;
   try { await navigator.clipboard.writeText(url); btn.textContent = 'Copied ✓'; }
   catch(e){ prompt('Copy this OBS URL:', url); }
