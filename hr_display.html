@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Home Run Banner — Display</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue:ital@0;1&family=Sofia+Sans+Semi+Condensed:wght@400;500;700;800&display=swap" rel="stylesheet"/>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{width:100%;height:100%;overflow:hidden;background:transparent;}
+body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
+
+/* Full 1920x1080 transparent canvas, self-scaling to the OBS source / window --
+   same trick as the odds Display, so the Control preview matches OBS exactly. */
+#stage{position:absolute;top:0;left:0;width:1920px;height:1080px;overflow:hidden;transform-origin:top left;}
+
+/* ── Style A: BAR — the banner at the top of screen, slides down/up. Same
+   864x119 footprint as the moneyline bar, mirrored to the top edge. ── */
+.hbar{position:absolute;width:864px;height:119px;overflow:hidden;
+  background:linear-gradient(#0C0C0C,#000);border-radius:6px;
+  transform:translateY(-160%);transition:transform .5s cubic-bezier(.16,1,.3,1);}
+.hbar.show{transform:translateY(0);}
+.hrlogo{position:absolute;left:2%;top:11%;height:78%;width:auto;}
+.hrwrap{position:absolute;left:15.6%;width:81.8%;top:0;height:100%;
+  display:flex;align-items:center;gap:18px;padding:0 6px;overflow:hidden;}
+.hrhead{font-family:'Bebas Neue',sans-serif;font-style:italic;font-size:58px;
+  letter-spacing:1px;color:#F1FD0E;line-height:1;white-space:nowrap;flex:0 0 auto;}
+.hrvp{position:relative;flex:1 1 auto;height:100%;overflow:hidden;}
+.hrtrack{position:absolute;top:0;left:0;height:100%;white-space:nowrap;will-change:transform;}
+.item{display:inline-flex;align-items:center;height:100%;
+  font-family:'Sofia Sans Semi Condensed',sans-serif;font-weight:700;
+  font-size:57px;letter-spacing:.4px;color:#FAFAFA;vertical-align:top;}
+.item .sep{color:#F1FD0E;font-size:23px;padding:0 4px;}
+
+/* ── Style B: BOX — compact card in the top-left corner, slides in from the
+   left. No crawl, static text only. ── */
+.hbox{position:absolute;width:430px;background:linear-gradient(150deg,#141414,#000);
+  border-left:6px solid #F1FD0E;border-radius:10px;
+  box-shadow:0 12px 40px rgba(0,0,0,.55);padding:16px 20px 18px;
+  transform:translateX(-160%);transition:transform .45s cubic-bezier(.16,1,.3,1);}
+.hbox.show{transform:translateX(0);}
+.blogo{height:26px;width:auto;display:block;margin-bottom:10px;opacity:.95;}
+.bhead{font-family:'Bebas Neue',sans-serif;font-style:italic;font-size:52px;
+  letter-spacing:1px;color:#F1FD0E;line-height:.9;}
+.bname{font-weight:800;font-size:34px;color:#FAFAFA;margin-top:6px;line-height:1.05;}
+.bname .bteam{font-weight:700;color:#9a95ad;font-size:26px;margin-left:6px;}
+.bmeta{font-weight:700;font-size:24px;color:#c8c3d6;margin-top:4px;}
+.bmeta .sep{color:#F1FD0E;padding:0 6px;}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="bar" class="hbar">
+    <img class="hrlogo" src="fanatics_logo.png" alt=""/>
+    <div class="hrwrap">
+      <span class="hrhead">HOME RUN</span>
+      <div class="hrvp"><div class="hrtrack"></div></div>
+    </div>
+  </div>
+  <div id="box" class="hbox">
+    <img class="blogo" src="fanatics_logo.png" alt=""/>
+    <div class="bhead">HOME RUN</div>
+    <div class="bname"></div>
+    <div class="bmeta"></div>
+  </div>
+</div>
+
+<script>
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCKB90Xi33pxNw2zdS6XoUImpGmBfs9M5E",
+  authDomain: "jm-odds-ticker.firebaseapp.com",
+  databaseURL: "https://jm-odds-ticker-default-rtdb.firebaseio.com",
+  projectId: "jm-odds-ticker",
+  storageBucket: "jm-odds-ticker.firebasestorage.app",
+  messagingSenderId: "1062781451132",
+  appId: "1:1062781451132:web:74a6acbe270a719ef2c2f9"
+};
+firebase.initializeApp(FIREBASE_CONFIG);
+const _db = firebase.database();
+const fbKey = t => t.trim().replace(/[.#$\[\]\/\s]+/g,'-');
+
+const params = new URLSearchParams(location.search);
+const TOPIC  = params.get('topic') || 'jomboy-hr';
+const STYLE  = params.get('style') === 'box' ? 'box' : 'bar';   // ?style=bar|box
+const DEMO   = params.get('demo') === '1';   // preview: fire a sample locally, no DB write
+const SPEED  = 90;                            // bar crawl speed, px/s (matches moneyline)
+
+// ── canvas layout: place the active banner, hide the other ──
+const CANVAS_W = 1920, CANVAS_H = 1080, BAR_W = 864, BAR_H = 119, NUDGE_X = 52;
+const stage = document.getElementById('stage');
+const bar = document.getElementById('bar'), box = document.getElementById('box');
+const active = STYLE === 'box' ? box : bar;
+(STYLE === 'box' ? bar : box).style.display = 'none';
+
+if(STYLE === 'bar'){
+  // Fixed 864x119 footprint (same as the moneyline bar), mirrored to the top.
+  const x = params.has('x') ? parseFloat(params.get('x')) : (CANVAS_W - BAR_W) / 2 + NUDGE_X;
+  const y = params.has('y') ? parseFloat(params.get('y')) : 5;   // ~5px from the top edge
+  bar.style.left = x + 'px'; bar.style.top = y + 'px';
+} else {
+  const w = parseFloat(params.get('w')) || 430;
+  box.style.left = (params.has('x') ? parseFloat(params.get('x')) : 24) + 'px';
+  box.style.top  = (params.has('y') ? parseFloat(params.get('y')) : 24) + 'px';
+  box.style.width = w + 'px';
+}
+
+function fitStage(){
+  const s = Math.min(innerWidth / CANVAS_W, innerHeight / CANVAS_H);
+  const x = (innerWidth - CANVAS_W * s) / 2, y = (innerHeight - CANVAS_H * s) / 2;
+  stage.style.transform = 'translate(' + x + 'px,' + y + 'px) scale(' + s + ')';
+}
+addEventListener('resize', fitStage);
+fitStage();
+
+// ── spoiler delay: hold every pop-up this many seconds so the graphic can't
+// beat the broadcast (stream runs behind the live data feed). Read live from the
+// config node so the operator can tune it mid-show without a reload. ──
+let spoiler = 0;
+_db.ref('odds/' + fbKey(TOPIC) + '/pbp').on('value', s => {
+  const v = s.val() || {}; if(Number.isFinite(v.spoiler)) spoiler = Math.max(0, v.spoiler);
+});
+
+// ── the crawl engine for the bar style (one line, loops HR_LOOPS times) ──
+const hrTrack = bar.querySelector('.hrtrack'), hrVp = bar.querySelector('.hrvp');
+let hrItems = [];
+const HR_LOOPS = 2;
+function makeScroller(track, viewport, getItems, getSpeed){
+  let offset = 0, rotPtr = 0, last = null;
+  function spawn(){
+    const list = getItems(); if(!list.length) return false;
+    const m = list[rotPtr++ % list.length];
+    const el = document.createElement('span'); el.className = 'item';
+    el.innerHTML = '<span class="sep">&#9670;</span><span class="txt"></span>';
+    el.querySelector('.txt').textContent = m.text || '';
+    track.appendChild(el); return true;
+  }
+  function needSpawn(){
+    const list = getItems(); if(!list.length) return false;
+    const lastEl = track.lastChild; if(!lastEl) return true;
+    return (lastEl.offsetLeft + lastEl.offsetWidth + offset) < viewport.clientWidth + 300;
+  }
+  function frame(t){
+    if(last === null) last = t;
+    const dt = Math.min((t - last)/1000, 0.05); last = t;
+    if(track.firstChild) offset -= getSpeed() * dt; else offset = 0;
+    while(track.firstChild){
+      const c = track.firstChild;
+      if(c.offsetLeft + c.offsetWidth + offset < -5){ offset += c.offsetWidth; track.removeChild(c); }
+      else break;
+    }
+    let safety = 0;
+    while(needSpawn() && safety++ < 50){ if(!spawn()) break; }
+    track.style.transform = 'translateX(' + offset + 'px)';
+    requestAnimationFrame(frame);
+  }
+  return {
+    reset(){ offset = 0; rotPtr = 0; last = null; while(track.firstChild) track.removeChild(track.firstChild); },
+    start(){ requestAnimationFrame(frame); },
+  };
+}
+const hrscroll = makeScroller(hrTrack, hrVp, () => hrItems, () => SPEED);
+if(STYLE === 'bar') hrscroll.start();
+
+function measureHR(line){
+  const s = document.createElement('span'); s.className = 'item';
+  s.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap';
+  s.innerHTML = '<span class="sep">&#9670;</span><span class="txt"></span>';
+  s.querySelector('.txt').textContent = line;
+  bar.appendChild(s); const w = s.offsetWidth; bar.removeChild(s); return w;
+}
+
+// ── build the display line(s) from an alert payload ──
+function lineFor(a){
+  const score = a.away ? a.away + ' ' + a.awayRuns + ' - ' + a.home + ' ' + a.homeRuns : '';
+  return [ (a.batter || '') + (a.team ? ' (' + a.team + ')' : ''), a.label, score ].filter(Boolean).join('   ');
+}
+function fill(a){
+  const head = a.headline || 'HOME RUN';
+  if(STYLE === 'bar'){
+    bar.querySelector('.hrhead').textContent = head;
+    hrItems = [{ text: lineFor(a) }]; hrscroll.reset();
+  } else {
+    box.querySelector('.bhead').textContent = head;
+    box.querySelector('.bname').innerHTML = '';
+    box.querySelector('.bname').textContent = a.batter || '';
+    if(a.team){ const t = document.createElement('span'); t.className = 'bteam'; t.textContent = a.team;
+      box.querySelector('.bname').appendChild(t); }
+    const score = a.away ? a.away + ' ' + a.awayRuns + ' – ' + a.home + ' ' + a.homeRuns : '';
+    const meta = [a.label, score].filter(Boolean).join('  ·  ');
+    box.querySelector('.bmeta').textContent = meta;
+  }
+}
+function durationFor(a){
+  if(STYLE === 'box') return 8;                 // static card: fixed hold
+  const line = lineFor(a);
+  return Math.max(6, Math.min((HR_LOOPS * measureHR(line) + (hrVp.clientWidth || 500)) / SPEED, 30));
+}
+
+// ── show / hide ──
+function show(){ active.classList.add('show'); }
+function hide(){
+  active.classList.remove('show');
+  if(STYLE === 'bar') setTimeout(() => { hrItems = []; hrscroll.reset(); }, 600);
+}
+
+// ── alert scheduling with the spoiler delay ──
+let lastAlertTs = 0, showTimer = null, hideTimer = null;
+function fire(a, hold, elapsed){
+  fill(a); show();
+  clearTimeout(hideTimer);
+  hideTimer = setTimeout(hide, Math.max(500, (hold - (elapsed || 0)) * 1000));
+}
+function schedule(a){
+  if(!a || !a.ts || a.ts <= lastAlertTs) return;   // ts-guard: no re-fire on reload/replay
+  lastAlertTs = a.ts;
+  clearTimeout(showTimer);
+  if(a.clear){ clearTimeout(hideTimer); hide(); return; }   // manual take-down
+  const hold = durationFor(a);
+  const wait = (a.ts + spoiler * 1000) - Date.now();
+  if(wait <= -(hold * 1000)) return;                // whole window already elapsed (stale)
+  if(wait > 0) showTimer = setTimeout(() => fire(a, hold, 0), wait);
+  else fire(a, hold, -wait / 1000);
+}
+_db.ref('odds/' + fbKey(TOPIC) + '/alert').on('value', snap => schedule(snap.val()));
+
+// ── preview/demo: fire a sample without touching Firebase (Control preview) ──
+if(DEMO){
+  const sample = {kind:'HR', headline:'HOME RUN', label:'2-RUN', batter:'Aaron Judge',
+    team:'NYY', away:'TB', home:'NYY', awayRuns:2, homeRuns:4};
+  const go = () => fire(sample, durationFor(sample), 0);
+  setTimeout(go, 400);
+  addEventListener('message', e => { if(e && e.data === 'hrdemo') go(); });
+}
+</script>
+</body>
+</html>

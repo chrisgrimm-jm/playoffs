@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Home Run Banner — Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue:ital@0;1&family=Sofia+Sans+Semi+Condensed:wght@400;500;700;800&display=swap" rel="stylesheet"/>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Sofia Sans Semi Condensed',sans-serif;background:#1A1823;color:#fff;
+  padding:22px 26px 60px;max-width:900px;}
+h1{font-family:'Bebas Neue',sans-serif;font-style:italic;font-size:40px;letter-spacing:2px;}
+h1 .dot{color:#F1FD0E;}
+.sub{color:#9a95ad;font-size:15px;margin-top:2px;}
+.row{display:flex;gap:14px;align-items:center;flex-wrap:wrap;}
+.bar{background:#23212E;border-radius:14px;padding:16px 18px;margin:18px 0;}
+label.fld{display:flex;flex-direction:column;gap:5px;font-size:13px;color:#9a95ad;}
+input[type=text],input[type=number]{background:#12111a;border:1px solid #3A3749;color:#fff;
+  border-radius:8px;padding:10px 13px;font:inherit;font-size:16px;}
+button{background:#2B283A;border:1px solid #3A3749;color:#fff;border-radius:8px;
+  padding:10px 16px;font:inherit;font-size:15px;font-weight:700;cursor:pointer;}
+button:hover{border-color:#00B7FF;}
+button.primary{background:#E40000;border-color:#E40000;}
+button.on{background:#00B13C;border-color:#00B13C;}
+button:disabled{opacity:.4;cursor:not-allowed;}
+.seg{display:inline-flex;border:1px solid #3A3749;border-radius:8px;overflow:hidden;}
+.seg button{border:0;border-radius:0;background:#12111a;}
+.seg button.sel{background:#00B7FF;color:#0C0C0C;}
+#status{margin-left:auto;font-size:14px;color:#9a95ad;display:flex;align-items:center;gap:8px;}
+#dot{width:9px;height:9px;border-radius:50%;background:#555;}
+#dot.ok{background:#00B13C;}#dot.err{background:#E40000;}
+#auth{display:flex;align-items:center;gap:8px;}
+#auth #who{font-size:13px;color:#00B13C;cursor:pointer;}
+#auth #who::before{content:'●  ';}
+#auth.in #signin{display:none;}
+#auth:not(.in) #who{display:none;}
+
+.pbpgame{background:#12111a;border:1px solid #3A3749;color:#c8c3d6;border-radius:8px;
+  padding:8px 12px;font-size:15px;font-weight:700;cursor:pointer;}
+.pbpgame:hover{border-color:#00B7FF;}
+.pbpgame.on{border-color:#F1FD0E;background:#2B283A;color:#fff;}
+
+#obs{position:relative;width:100%;aspect-ratio:16/9;border-radius:8px;overflow:hidden;margin-top:10px;
+  background-image:linear-gradient(45deg,#26242f 25%,transparent 25%),
+    linear-gradient(-45deg,#26242f 25%,transparent 25%),
+    linear-gradient(45deg,transparent 75%,#26242f 75%),
+    linear-gradient(-45deg,transparent 75%,#26242f 75%);
+  background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;}
+#obs iframe{position:absolute;inset:0;width:100%;height:100%;border:0;}
+.head{font-family:'Bebas Neue',sans-serif;letter-spacing:2px;font-size:22px;color:#00B7FF;}
+</style>
+</head>
+<body>
+
+<h1>HOME RUN BANNER<span class="dot">.</span></h1>
+<div class="sub">Fanatics HR pop-up → OBS. Pick a game; homers pop automatically.</div>
+
+<div class="bar">
+  <div class="row">
+    <label class="fld" style="flex:1 1 220px">Channel name
+      <input type="text" id="topic" value="jomboy-hr" placeholder="jomboy-hr">
+    </label>
+    <label class="fld">Banner style
+      <span class="seg" id="style">
+        <button data-style="bar" class="sel">Top bar (slide down)</button>
+        <button data-style="box">Corner box (slide in)</button>
+      </span>
+    </label>
+    <label class="fld">Spoiler delay (sec)
+      <input type="number" id="spoiler" value="0" min="0" max="60" step="1" style="width:110px">
+    </label>
+    <button id="copyobs" title="Copy the OBS Browser Source URL" style="align-self:flex-end">Copy OBS URL</button>
+    <div id="status"><span id="dot"></span><span id="stat">connecting…</span></div>
+    <div id="auth" style="align-self:flex-end"><button id="signin">Sign in</button><span id="who"></span></div>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <span class="head" style="font-size:13px;color:#6b6680">OBS PREVIEW · 1920 × 1080</span>
+    <button id="test" style="margin-left:auto">Test pop-up ▶</button>
+  </div>
+  <div id="obs"><iframe id="obsframe" title="OBS preview" scrolling="no"></iframe></div>
+</div>
+
+<div class="bar">
+  <div class="row" style="margin-bottom:10px">
+    <span class="head">PICK YOUR GAME</span>
+    <span class="sub" style="margin:0">Homers in this game pop up on the banner.</span>
+    <button id="refresh">Refresh games</button>
+    <button id="air" class="primary" style="margin-left:auto" disabled>GO ON AIR</button>
+  </div>
+  <div id="games" class="row"></div>
+  <div id="pick" class="sub" style="margin-top:8px">Loading today’s games…</div>
+</div>
+
+<script>
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCKB90Xi33pxNw2zdS6XoUImpGmBfs9M5E",
+  authDomain: "jm-odds-ticker.firebaseapp.com",
+  databaseURL: "https://jm-odds-ticker-default-rtdb.firebaseio.com",
+  projectId: "jm-odds-ticker",
+  storageBucket: "jm-odds-ticker.firebasestorage.app",
+  messagingSenderId: "1062781451132",
+  appId: "1:1062781451132:web:74a6acbe270a719ef2c2f9"
+};
+firebase.initializeApp(FIREBASE_CONFIG);
+const _db = firebase.database();
+const fbKey = t => t.trim().replace(/[.#$\[\]\/\s]+/g,'-');
+const $ = id => document.getElementById(id);
+
+// Writes to /pbp are locked to @jomboymedia.com in the rules; operator signs in
+// with their Jomboy Google account. The HR alert itself is written by the feeder
+// (admin), never from here.
+const _auth = firebase.auth();
+const provider = new firebase.auth.GoogleAuthProvider();
+provider.setCustomParameters({ hd: 'jomboymedia.com' });
+let user = null;
+const signIn = () => _auth.signInWithPopup(provider).catch(e => alert('Sign-in failed: ' + e.message));
+
+let teams = null, label = '', onAir = false, style = 'bar', games = [];
+try { const s = JSON.parse(localStorage.getItem('hrPick')||'null');
+  if(s){ teams = s.teams; label = s.label; } } catch(e){}
+try { style = localStorage.getItem('hrStyle') || 'bar'; } catch(e){}
+$('style').querySelectorAll('button').forEach(b => b.classList.toggle('sel', b.dataset.style === style));
+
+_db.ref('.info/connected').on('value', s => { $('dot').className = s.val() ? 'ok' : 'err';
+  $('stat').textContent = s.val() ? 'connected' : 'offline'; });
+
+// ── OBS preview (the real Display, demo mode so it self-fires a sample) ──
+function topic(){ return $('topic').value.trim() || 'jomboy-hr'; }
+function displayPath(){
+  return location.pathname.replace('Control','Display').replace('control','display');
+}
+function mountPreview(){
+  $('obsframe').src = displayPath() + '?topic=' + encodeURIComponent(topic())
+                    + '&style=' + style + '&demo=1&cb=' + Date.now();
+}
+mountPreview();
+$('test').onclick = () => { try { $('obsframe').contentWindow.postMessage('hrdemo','*'); } catch(e){} };
+$('style').querySelectorAll('button').forEach(b => b.onclick = () => {
+  style = b.dataset.style; localStorage.setItem('hrStyle', style);
+  $('style').querySelectorAll('button').forEach(x => x.classList.toggle('sel', x === b));
+  mountPreview();
+});
+$('topic').addEventListener('change', () => { mountPreview(); writePBP(); });
+
+$('copyobs').onclick = async () => {
+  const url = location.origin + displayPath() + '?topic=' + encodeURIComponent(topic()) + '&style=' + style;
+  const btn = $('copyobs'), lab = btn.textContent;
+  try { await navigator.clipboard.writeText(url); btn.textContent = 'Copied ✓'; }
+  catch(e){ prompt('Copy this OBS URL:', url); }
+  setTimeout(() => { btn.textContent = lab; }, 1500);
+};
+
+// ── auth ──
+$('signin').onclick = signIn;
+$('who').onclick = () => { if(confirm('Sign out?')) _auth.signOut(); };
+_auth.onAuthStateChanged(u => {
+  const ok = !!u && /@jomboymedia\.com$/i.test(u.email || '');
+  if(u && !ok){ alert('Please use your @jomboymedia.com account.'); _auth.signOut(); return; }
+  user = ok ? u : null;
+  $('auth').className = ok ? 'in' : '';
+  $('who').textContent = ok ? u.email : '';
+  update();
+  if(ok) writePBP();   // reassert once authed
+});
+
+// ── game picker (MLB schedule, so you can pick before first pitch) ──
+const MLB_ID = {109:'ARI',144:'ATL',110:'BAL',111:'BOS',112:'CHC',145:'CWS',113:'CIN',
+  114:'CLE',115:'COL',116:'DET',117:'HOU',118:'KC',108:'LAA',119:'LAD',146:'MIA',
+  158:'MIL',142:'MIN',121:'NYM',147:'NYY',133:'ATH',143:'PHI',134:'PIT',135:'SD',
+  137:'SF',136:'SEA',138:'STL',139:'TB',140:'TEX',141:'TOR',120:'WSH'};
+async function loadGames(){
+  const d = new Date();
+  const date = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  $('pick').textContent = 'Loading today’s games…';
+  try {
+    const r = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${date}`);
+    const j = await r.json();
+    games = (j.dates && j.dates[0] && j.dates[0].games) || [];
+    renderGames();
+  } catch(e){ $('pick').textContent = 'Could not load games — check the connection, then Refresh.'; }
+}
+function renderGames(){
+  if(!games.length){ $('games').innerHTML = ''; $('pick').textContent = 'No MLB games listed today.'; return; }
+  $('games').innerHTML = games.map(g => {
+    const a = MLB_ID[g.teams.away.team.id]||'?', h = MLB_ID[g.teams.home.team.id]||'?';
+    const t = new Date(g.gameDate).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+    const sel = label === `${a} @ ${h}` ? 'on' : '';
+    return `<button class="pbpgame ${sel}" data-a="${a}" data-h="${h}">${a} @ ${h} <span style="opacity:.55">${t}</span></button>`;
+  }).join('');
+  $('games').querySelectorAll('.pbpgame').forEach(b => b.onclick = () => {
+    teams = [b.dataset.a, b.dataset.h]; label = `${b.dataset.a} @ ${b.dataset.h}`;
+    localStorage.setItem('hrPick', JSON.stringify({teams, label}));
+    renderGames(); update(); writePBP();
+  });
+  update();
+}
+function update(){
+  $('air').disabled = !(teams && user);
+  $('air').textContent = onAir ? 'ON AIR — take off' : 'GO ON AIR';
+  $('air').className = onAir ? 'on' : 'primary';
+  $('pick').textContent = !teams ? 'Pick your game above.'
+    : onAir ? `● Watching ${label} — homers pop up automatically.`
+    : `Picked ${label}. Hit GO ON AIR when ready (works before first pitch).`;
+}
+function writePBP(){
+  if(!user || !teams) return;   // /pbp writes require Jomboy auth (rules 401 otherwise)
+  _db.ref('odds/' + fbKey(topic()) + '/pbp').set({
+    teams, onair: onAir, spoiler: parseFloat($('spoiler').value) || 0, ts: Date.now()
+  });
+}
+$('refresh').onclick = loadGames;
+$('air').onclick = () => { if(!user){ signIn(); return; } onAir = !onAir; update(); writePBP(); };
+$('spoiler').addEventListener('change', writePBP);
+loadGames();
+</script>
+</body>
+</html>
