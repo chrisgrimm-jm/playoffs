@@ -644,7 +644,7 @@ const hrStyle = 'box';   // corner box is the only style now (top-bar option rem
 // copied OBS URL as &b= so a real update forces OBS to load a genuinely
 // different resource -- no more relying on "refresh cache" in OBS, which is
 // easy to miss. Keep this in sync with HR_BUILD in hr_display.html.
-const HR_BUILD = '2026-09-26a-realtime-fix';
+const HR_BUILD = '2026-09-26b-slide-easing';
 const hrTopicVal = () => $('hrtopic').value.trim() || 'jomboy-hr';
 function mountHRPreview(){
   $('hrobsframe').src = HR_FILE + '?topic=' + encodeURIComponent(hrTopicVal())
