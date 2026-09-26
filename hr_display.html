@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Home Run Banner — Display (build 2026-09-25f)</title>
+<title>Home Run Banner — Display (build 2026-09-26a)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue:ital@0;1&family=Sofia+Sans+Semi+Condensed:wght@400;500;700;800&display=swap" rel="stylesheet"/>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
@@ -83,7 +83,7 @@ firebase.initializeApp(FIREBASE_CONFIG);
 const _db = firebase.database();
 const fbKey = t => t.trim().replace(/[.#$\[\]\/\s]+/g,'-');
 
-const HR_BUILD = '2026-09-25f-watch-all';
+const HR_BUILD = '2026-09-26a-realtime-fix';
 console.log('[HR banner] build ' + HR_BUILD);
 const params = new URLSearchParams(location.search);
 const TOPIC  = params.get('topic') || 'jomboy-hr';
@@ -189,7 +189,14 @@ async function pollGame(pk, seen, seededObj){
       seen.add(key);
       const rbi = res.rbi || 1;
       const half = (p.about||{}).halfInning;           // 'top' = away batting
-      schedule({ kind: 'HR', ts: Date.now(),
+      // Use the play's OWN timestamp from the feed, not "now" -- we only poll
+      // every several seconds, so by the time we notice a home run it may
+      // already be a few seconds old. Basing the spoiler-delay countdown on
+      // "now" would add that polling lag ON TOP of the spoiler delay, making
+      // the pop-up land later than intended. Anchoring to the real play time
+      // means any polling lag eats into the spoiler window instead of adding to it.
+      const playTs = Date.parse((p.about||{}).endTime) || Date.now();
+      schedule({ kind: 'HR', ts: playTs,
         headline: rbi >= 4 ? 'GRAND SLAM' : 'HOME RUN',
         label: RBI_LABEL[rbi] || (rbi + '-RUN'),
         batter: ((p.matchup||{}).batter||{}).fullName || '',
@@ -208,7 +215,7 @@ function startMLB(){
   stopMLB(); mlbSeen = new Set(); mlbSeeded = { v: false };
   if(!gamePk) return;
   pollGame(gamePk, mlbSeen, mlbSeeded);
-  mlbTimer = setInterval(() => pollGame(gamePk, mlbSeen, mlbSeeded), 12000);   // one game, ~12s cadence
+  mlbTimer = setInterval(() => pollGame(gamePk, mlbSeen, mlbSeeded), 6000);   // one game, ~6s cadence
 }
 
 // ── "watch all live games" mode: re-check today's schedule each cycle for
@@ -236,7 +243,7 @@ async function pollAllLive(){
 function startMLBAll(){
   stopMLBAll();
   pollAllLive();
-  allTimer = setInterval(pollAllLive, 15000);   // re-checks the live slate each cycle
+  allTimer = setInterval(pollAllLive, 8000);   // re-checks the live slate each cycle
 }
 
 // ── the crawl engine for the bar style (one line, loops HR_LOOPS times) ──
