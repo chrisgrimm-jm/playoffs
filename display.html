@@ -44,6 +44,14 @@ body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
    119px design; #barpos/#stage scale everything uniformly. */
 .box .vp{position:absolute;left:15.6%;width:81.8%;top:7.8%;height:69.9%;overflow:hidden;}
 .box .track{position:absolute;top:0;left:0;height:100%;white-space:nowrap;will-change:transform;}
+/* Fixed "MONEYLINE" label pinned left of the crawl (only one game on at a time,
+   so this labels the odds + fills the left space). #bar only; flex self-sizes the
+   label and hands the rest to the crawl. ?label= overrides, ?label= (empty) hides. */
+.mlwrap{position:absolute;left:15.6%;width:81.8%;top:7.8%;height:69.9%;
+  display:flex;align-items:center;gap:16px;}
+.mlwrap .vp{position:relative;left:auto;top:auto;width:auto;height:100%;flex:1 1 auto;}
+.mllabel{flex:0 0 auto;font-family:'Bebas Neue',sans-serif;font-style:italic;
+  font-size:52px;letter-spacing:1px;color:#F1FD0E;line-height:1;white-space:nowrap;}
 .item{display:inline-flex;align-items:center;height:100%;
   font-family:'Sofia Sans Semi Condensed',sans-serif;font-weight:700;
   font-size:57px;letter-spacing:.4px;color:#FAFAFA;vertical-align:top;}
@@ -77,7 +85,10 @@ body{font-family:'Sofia Sans Semi Condensed',sans-serif;}
     </div>
     <div id="bar" class="box">
       <img class="art" src="bar.png?v=4" alt=""/>
-      <div class="vp"><div class="track"></div></div>
+      <div class="mlwrap">
+        <span class="mllabel"></span>
+        <div class="vp"><div class="track"></div></div>
+      </div>
     </div>
     <div id="hrpop" class="box">
       <img class="hrlogo" src="fanatics_logo.png" alt=""/>
@@ -121,6 +132,13 @@ const stage = document.getElementById('stage');
 const barpos = document.getElementById('barpos');
 
 if(BAR) document.querySelectorAll('.art').forEach(a => a.src = BAR);
+
+// Fixed label at the front of the moneyline crawl. Default "MONEYLINE";
+// ?label=Futures etc. to relabel, ?label= (empty) to hide it entirely.
+const LABEL = params.has('label') ? params.get('label') : 'MONEYLINE';
+const mllabel = bar.querySelector('.mllabel');
+mllabel.textContent = LABEL;
+if(!LABEL) mllabel.style.display = 'none';
 
 // ── canvas layout ──
 // Design canvas is 1920x1080. The bar is 864x119 (Singular on-air size); place
